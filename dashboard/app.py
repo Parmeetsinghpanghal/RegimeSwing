@@ -409,7 +409,7 @@ def render_dashboard_page(params):
     try:
         fetcher = create_fetcher()
         nifty_df = fetcher.get_nifty_index_data(period="1y", interval="1d")
-        # Handle Nifty column names (same as regular symbols)
+        # Handle Nifty column names (same as regular symbols) - robust version
         if not nifty_df.empty:
             # Debug: log raw columns
             logger.info(f"Nifty raw columns: {list(nifty_df.columns)}")
@@ -417,7 +417,11 @@ def render_dashboard_page(params):
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
                 try:
-                    nifty_df.columns = nifty_df.columns.get_level_values(1)
+                    # Try level 1 first (OHLCV data), then level 0
+                    try:
+                        nifty_df.columns = nifty_df.columns.get_level_values(1)
+                    except Exception:
+                        nifty_df.columns = nifty_df.columns.get_level_values(0)
                 except Exception:
                     pass
             # Standardize column names - robust handling for ^NSEI
@@ -435,22 +439,31 @@ def render_dashboard_page(params):
             # Debug: log processed columns
             logger.info(f"Nifty processed columns: {list(nifty_df.columns)}")
 
-            # Ensure required columns exist
+            # Ensure required columns exist - very aggressive fallback
             required = ['Open', 'High', 'Low', 'Close', 'Volume']
             missing = [c for c in required if c not in nifty_df.columns]
             if missing:
                 # Try alternative column names
                 alt_map = {
-                    'Open': ['open', 'OPEN', 'Open Price'],
-                    'High': ['high', 'HIGH', 'High Price'],
-                    'Low': ['low', 'LOW', 'Low Price'],
-                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
-                    'Volume': ['volume', 'VOLUME', 'Vol']
+                    'Open': ['open', 'OPEN', 'Open Price', 'open price'],
+                    'High': ['high', 'HIGH', 'High Price', 'high price'],
+                    'Low': ['low', 'LOW', 'Low Price', 'low price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose', 'adj close', 'adj_close', 'close price'],
+                    'Volume': ['volume', 'VOLUME', 'Vol', 'vol']
                 }
                 for req in missing[:]:
                     for alt in alt_map.get(req, []):
                         if alt in nifty_df.columns:
                             nifty_df[req] = nifty_df[alt]
+                            missing.remove(req)
+                            break
+
+            # If still missing, try case-insensitive search through all columns
+            if missing:
+                for req in missing[:]:
+                    for col in nifty_df.columns:
+                        if col.lower() == req.lower():
+                            nifty_df[req] = nifty_df[col]
                             missing.remove(req)
                             break
 
@@ -627,7 +640,7 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
             period=f"{(end_date - start_date).days}d",
             interval="1d"
         )
-        # Handle Nifty column names (same as regular symbols)
+        # Handle Nifty column names (same as regular symbols) - robust version
         if not nifty_df.empty:
             # Debug: log raw columns
             logger.info(f"Nifty raw columns: {list(nifty_df.columns)}")
@@ -635,7 +648,11 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
                 try:
-                    nifty_df.columns = nifty_df.columns.get_level_values(1)
+                    # Try level 1 first (OHLCV data), then level 0
+                    try:
+                        nifty_df.columns = nifty_df.columns.get_level_values(1)
+                    except Exception:
+                        nifty_df.columns = nifty_df.columns.get_level_values(0)
                 except Exception:
                     pass
             # Standardize column names - robust handling for ^NSEI
@@ -653,22 +670,31 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
             # Debug: log processed columns
             logger.info(f"Nifty processed columns: {list(nifty_df.columns)}")
 
-            # Ensure required columns exist
+            # Ensure required columns exist - very aggressive fallback
             required = ['Open', 'High', 'Low', 'Close', 'Volume']
             missing = [c for c in required if c not in nifty_df.columns]
             if missing:
                 # Try alternative column names
                 alt_map = {
-                    'Open': ['open', 'OPEN', 'Open Price'],
-                    'High': ['high', 'HIGH', 'High Price'],
-                    'Low': ['low', 'LOW', 'Low Price'],
-                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
-                    'Volume': ['volume', 'VOLUME', 'Vol']
+                    'Open': ['open', 'OPEN', 'Open Price', 'open price'],
+                    'High': ['high', 'HIGH', 'High Price', 'high price'],
+                    'Low': ['low', 'LOW', 'Low Price', 'low price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose', 'adj close', 'adj_close', 'close price'],
+                    'Volume': ['volume', 'VOLUME', 'Vol', 'vol']
                 }
                 for req in missing[:]:
                     for alt in alt_map.get(req, []):
                         if alt in nifty_df.columns:
                             nifty_df[req] = nifty_df[alt]
+                            missing.remove(req)
+                            break
+
+            # If still missing, try case-insensitive search through all columns
+            if missing:
+                for req in missing[:]:
+                    for col in nifty_df.columns:
+                        if col.lower() == req.lower():
+                            nifty_df[req] = nifty_df[col]
                             missing.remove(req)
                             break
 
@@ -932,7 +958,7 @@ def render_regime_page(params):
     try:
         fetcher = create_fetcher()
         nifty_df = fetcher.get_nifty_index_data(period="2y", interval="1d")
-        # Handle Nifty column names (same as regular symbols)
+        # Handle Nifty column names (same as regular symbols) - robust version
         if not nifty_df.empty:
             # Debug: log raw columns
             logger.info(f"Nifty raw columns: {list(nifty_df.columns)}")
@@ -940,7 +966,11 @@ def render_regime_page(params):
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
                 try:
-                    nifty_df.columns = nifty_df.columns.get_level_values(1)
+                    # Try level 1 first (OHLCV data), then level 0
+                    try:
+                        nifty_df.columns = nifty_df.columns.get_level_values(1)
+                    except Exception:
+                        nifty_df.columns = nifty_df.columns.get_level_values(0)
                 except Exception:
                     pass
             # Standardize column names - robust handling for ^NSEI
@@ -958,17 +988,17 @@ def render_regime_page(params):
             # Debug: log processed columns
             logger.info(f"Nifty processed columns: {list(nifty_df.columns)}")
 
-            # Ensure required columns exist
+            # Ensure required columns exist - very aggressive fallback
             required = ['Open', 'High', 'Low', 'Close', 'Volume']
             missing = [c for c in required if c not in nifty_df.columns]
             if missing:
                 # Try alternative column names
                 alt_map = {
-                    'Open': ['open', 'OPEN', 'Open Price'],
-                    'High': ['high', 'HIGH', 'High Price'],
-                    'Low': ['low', 'LOW', 'Low Price'],
-                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
-                    'Volume': ['volume', 'VOLUME', 'Vol']
+                    'Open': ['open', 'OPEN', 'Open Price', 'open price'],
+                    'High': ['high', 'HIGH', 'High Price', 'high price'],
+                    'Low': ['low', 'LOW', 'Low Price', 'low price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose', 'adj close', 'adj_close', 'close price'],
+                    'Volume': ['volume', 'VOLUME', 'Vol', 'vol']
                 }
                 for req in missing[:]:
                     for alt in alt_map.get(req, []):
@@ -976,6 +1006,15 @@ def render_regime_page(params):
                             nifty_df[req] = nifty_df[alt]
                             missing.remove(req)
                             break
+
+                # If still missing, try case-insensitive search through all columns
+                if missing:
+                    for req in missing[:]:
+                        for col in nifty_df.columns:
+                            if col.lower() == req.lower():
+                                nifty_df[req] = nifty_df[col]
+                                missing.remove(req)
+                                break
 
             if missing:
                 st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")

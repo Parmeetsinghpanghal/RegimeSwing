@@ -24,13 +24,18 @@ Built for systematic swing trading (5-20 day holds) and options selling (CSP, CC
 ## 📁 Project Structure
 
 ```
-swing_toolkit/
+RegimeSwing_Final_Deploy/
+├── streamlit_app.py         # Streamlit Cloud entry point
 ├── config.yaml              # All parameters (edit this!)
 ├── main.py                  # CLI entry point
 ├── requirements.txt         # Dependencies
 ├── README.md                # This file
+├── .streamlit/
+│   ├── config.toml          # Streamlit configuration
+│   └── secrets.toml.template # Secrets template
 ├── data/
 │   ├── fetcher.py           # Price/option/fundamental data (Kite + yfinance)
+│   ├── nse_option_chain.py  # Free NSE option chain
 │   └── news_fetcher.py      # RSS + FinBERT sentiment
 ├── indicators/
 │   ├── technical.py         # 20+ indicators (EMA, RSI, ATR, BB, VWAP, etc.)
@@ -45,6 +50,7 @@ swing_toolkit/
 │   └── engine.py            # Walk-forward backtester + Monte Carlo
 ├── dashboard/
 │   └── app.py               # Streamlit dashboard
+├── tests/                   # Unit tests
 └── logs/                    # Auto-created: trades.csv, state.db
 ```
 
@@ -54,7 +60,7 @@ swing_toolkit/
 
 ### 1. Install Dependencies
 ```bash
-cd swing_toolkit
+cd RegimeSwing_Final_Deploy
 pip install -r requirements.txt
 ```
 
@@ -79,16 +85,20 @@ python main.py auth
 
 ### 4. Run Backtest
 ```bash
-# All strategies, Nifty 200, 2020-2024
-python main.py backtest --strategy all --start 2020-01-01 --end 2024-12-31
+# Quick signal generation
+python main.py backtest --strategy all
 
-# Single strategy
-python main.py backtest --strategy trend_pullback --start 2022-01-01
+# Full walk-forward backtest with Monte Carlo
+python main.py backtest-wf --start 2020-01-01 --end 2024-12-31
 ```
 
-### 5. Paper Trade (Single Cycle)
+### 5. Paper Trade
 ```bash
+# Single cycle
 python main.py papertrade --once
+
+# Continuous daemon mode
+python main.py papertrade --daemon --interval 300
 ```
 
 ### 6. Launch Dashboard
@@ -97,66 +107,81 @@ python main.py dashboard
 # Opens http://localhost:8501
 ```
 
-### 7. Quick Scan
-```bash
-python main.py scan --symbols RELIANCE,TCS,HDFCBANK,ICICIBANK
-```
+---
 
-### 8. Check Regime
-```bash
-python main.py regime
-```
+## ☁️ Streamlit Cloud Deployment
+
+### One-Click Deploy
+[![Deploy to Streamlit](https://streamlit.io/badge.svg)](https://share.streamlit.io/deploy?repository=<your-github-repo>&main-file=streamlit_app.py)
+
+### Manual Deployment Steps
+
+1. **Push to GitHub:**
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/<your-username>/<your-repo>.git
+   git push -u origin main
+   ```
+
+2. **Deploy on Streamlit Cloud:**
+   - Go to [share.streamlit.io](https://share.streamlit.io)
+   - Click "New app"
+   - Select your repository
+   - Main file: `streamlit_app.py`
+   - Click "Deploy!"
+
+3. **Configure Secrets (Optional):**
+   - In Streamlit Cloud dashboard, go to App Settings → Secrets
+   - Add your config from `.streamlit/secrets.toml.template`:
+   ```toml
+   [broker]
+   api_key = "your_kite_api_key"
+   api_secret = "your_kite_api_secret"
+
+   [config]
+   capital = {initial = 500000, max_risk_per_trade = 0.015}
+   ```
+
+### Cloud Limitations
+| Feature | Local | Streamlit Cloud |
+|---------|-------|-----------------|
+| Dashboard/Signals/Regime/Scanner | ✅ | ✅ |
+| Walk-Forward Backtest | ✅ | ❌ (resource limits) |
+| Paper Trading (persistent) | ✅ | ⚠️ Session only |
+| Alerts (Telegram/Email) | ✅ | ✅ (with secrets) |
+
+**Note:** The dashboard runs in "Demo Mode" on Streamlit Cloud with built-in default config. Paper trading and backtesting require local deployment.
 
 ---
 
-## ⚙️ Key Configuration (config.yaml)
+## 🔧 Commands Reference
 
-### Risk Management
-```yaml
-capital:
-  max_risk_per_trade: 0.015      # 1.5% per trade
-  max_portfolio_risk: 0.06       # 6% total risk
-  max_position_pct: 0.05         # 5% max per position
-  max_sector_pct: 0.25           # 25% max per sector
+```bash
+# Backtest
+python main.py backtest --strategy all --start 2020-01-01
+python main.py backtest-wf --start 2020-01-01 --end 2024-12-31
 
-drawdown_circuits:
-  daily_loss_limit: 0.03         # -3% → halve size
-  daily_stop_limit: 0.05         # -5% → stop new entries
-  total_dd_stop: 0.15            # -15% → stop all
-```
+# Paper Trading
+python main.py papertrade --once
+python main.py papertrade --daemon --interval 300
 
-### Strategy Parameters
-```yaml
-swing:
-  trend_pullback:
-    ema_fast: 20
-    ema_medium: 50
-    ema_slow: 200
-    adx_min: 25
-    rsi_min: 40
-    rsi_max: 55
+# Dashboard
+python main.py dashboard
 
-  breakout_volume:
-    volume_mult: 1.5
-    min_consolidation_days: 10
+# Authenticate
+python main.py auth
 
-options:
-  cash_secured_puts:
-    iv_rank_min: 60
-    delta_target_min: 0.25
-    delta_target_max: 0.30
-    dte_min: 30
-    dte_max: 45
-```
+# Scan
+python main.py scan --symbols RELIANCE,TCS,HDFCBANK
 
-### Costs (Realistic Indian Market)
-```yaml
-costs:
-  brokerage_per_order: 20
-  stt_equity_delivery: 0.001
-  stt_options_sell: 0.000625
-  slippage_bps_equity: 15
-  slippage_bps_options: 50
+# Regime Check
+python main.py regime
+
+# Multi-timeframe Confluence
+python main.py confluence --symbols RELIANCE,TCS
 ```
 
 ---
@@ -166,7 +191,7 @@ costs:
 ### Swing Strategies
 
 | Strategy | Regime | Setup | Entry | Stop | Targets |
-|----------|--------|-------|-------|------|---------|
+|----------|--------|-------|-------|-------|---------|
 | **Trend Pullback** | Bull | Price > EMA50>EMA200, ADX>25, pullback to EMA20 zone | Close > EMA20 + bullish candle | Chandelier(22,3) | 1.5R, 2.5R, Trail |
 | **Breakout Volume** | Bull | 20d consolidation <8%, breakout + 1.5x vol | Close > 20d high | Below breakout low | 2R, 3R, Trail 20d low |
 | **Mean Reversion BB** | Sideways/Bull | Price ≤ Lower BB, RSI<30, ADX<20 | Close inside BB + bullish candle | Below candle low | BB Mid → BB Upper |
@@ -194,40 +219,6 @@ costs:
 | **Sharpe** | > 1.0 |
 
 **⚠️ Not 90% win rate** — that's a scam metric. High win rate = tiny targets = blowup risk.
-
----
-
-## 🔧 Advanced Usage
-
-### Custom Symbol Universe
-```bash
-python main.py backtest --universe "RELIANCE,TCS,HDFCBANK,ICICIBANK,INFY,HINDUNILVR"
-```
-
-### Save Signals to JSON
-```bash
-python main.py backtest --strategy all --output signals.json
-```
-
-### Dashboard Features
-- **Dashboard**: Portfolio, regime, signals, charts
-- **Backtest**: Run walk-forward (CLI integration)
-- **Paper Trading**: Run cycle, view positions
-- **Scanner**: Quick technical scan
-- **Regime Monitor**: Historical regime analysis
-
----
-
-## 📈 Data Sources
-
-| Data | Source | Cost |
-|------|--------|------|
-| Daily OHLCV | Kite Connect (free tier) / yfinance | Free |
-| Intraday | Kite Connect (paid ₹2000/mo for websocket) | Optional |
-| Option Chain | Kite Connect / NSE API | Free tier |
-| Fundamentals | yfinance | Free |
-| News | Moneycontrol, ET, Business Standard RSS | Free |
-| Sentiment | FinBERT (local, no API) | Free |
 
 ---
 
@@ -314,4 +305,6 @@ Issues and PRs welcome! Focus areas:
 
 ---
 
-**Built with**: Python, pandas, pandas-ta, vectorbt, plotly, streamlit, scikit-learn, transformers (FinBERT)
+## 🤖 Built with
+
+Python, pandas, pandas-ta, vectorbt, plotly, streamlit, scikit-learn, transformers (FinBERT)
