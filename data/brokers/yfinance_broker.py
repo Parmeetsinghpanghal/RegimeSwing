@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Union, Any
 from datetime import datetime, timedelta
 import asyncio
-import time
+import concurrent.futures
 
 import pandas as pd
 import numpy as np
@@ -27,6 +27,7 @@ class YFinanceBroker:
         self._ticker_cache = {}
         self._max_retries = 3
         self._base_delay = 1.0
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     async def initialize(self) -> bool:
         """Initialize - nothing needed for yfinance."""
@@ -35,7 +36,7 @@ class YFinanceBroker:
 
     async def close(self):
         """Close connections."""
-        pass
+        self._executor.shutdown(wait=True)
 
     def _symbol_to_yahoo(self, symbol: str) -> str:
         """Convert NSE symbol to Yahoo Finance format."""
@@ -47,12 +48,13 @@ class YFinanceBroker:
             self._ticker_cache[symbol] = yf.Ticker(f"{symbol}.NS")
         return self._ticker_cache[symbol]
 
-    async def _fetch_with_retry(self, func, *args, **kwargs):
-        """Execute function with retry logic for transient errors."""
+    async def _run_sync_with_retry(self, func, *args, **kwargs):
+        """Execute synchronous function with retry logic in thread pool."""
         last_exception = None
         for attempt in range(self._max_retries):
             try:
-                return await func(*args, **kwargs)
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(self._executor, lambda: func(*args, **kwargs))
             except Exception as e:
                 last_exception = e
                 error_msg = str(e).lower()
@@ -73,21 +75,6 @@ class YFinanceBroker:
                 raise
 
         raise last_exception
-
-    async def _download_symbol(self, yf_symbol: str, period: str, interval: str) -> pd.DataFrame:
-        """Download single symbol with error handling."""
-        def _download():
-            return yf.download(
-                yf_symbol,
-                period=period,
-                interval=interval,
-                progress=False,
-                auto_adjust=False,
-                threads=False,
-                group_by='ticker'
-            )
-
-        return await self._fetch_with_retry(_download)
 
     async def get_price_data(
         self,
@@ -114,7 +101,9 @@ class YFinanceBroker:
             yf_symbol = f"{symbol}.NS"
 
             try:
-                df = await self._download_symbol(yf_symbol, period, interval)
+                df = await self._run_sync_with_retry(
+                    self._download_symbol_sync, yf_symbol, period, interval
+                )
 
                 if df.empty:
                     logger.warning(f"No data returned for {symbol}")
@@ -164,6 +153,18 @@ class YFinanceBroker:
         combined.sort_index(inplace=True)
         return combined
 
+    def _download_symbol_sync(self, yf_symbol: str, period: str, interval: str) -> pd.DataFrame:
+        """Synchronous download of single symbol."""
+        return yf.download(
+            yf_symbol,
+            period=period,
+            interval=interval,
+            progress=False,
+            auto_adjust=False,
+            threads=False,
+            group_by='ticker'
+        )
+
     async def get_option_chain(self, symbol: str, expiry: Optional[str] = None) -> pd.DataFrame:
         """Get option chain - not available via yfinance."""
         return pd.DataFrame(columns=[
@@ -180,7 +181,9 @@ class YFinanceBroker:
                 ticker = yf.Ticker(yf_symbol)
 
                 # Run in thread pool to avoid blocking
-                info = await asyncio.get_event_loop().run_in_executor(None, lambda: ticker.info)
+                info = await asyncio.get_event_loop().run_in_executor(
+                    self._executor, lambda: ticker.info
+                )
 
                 # Extract key metrics
                 fundamentals = {
@@ -211,7 +214,9 @@ class YFinanceBroker:
     async def get_nifty_index_data(self, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
         """Get Nifty 50 index data for regime detection."""
         try:
-            df = await self._download_symbol("^NSEI", period, interval)
+            df = await self._run_sync_with_retry(
+                self._download_symbol_sync, "^NSEI", period, interval
+            )
 
             if df.empty:
                 return pd.DataFrame()
