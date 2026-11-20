@@ -143,6 +143,7 @@ python main.py dashboard
 
    [config]
    capital = {initial = 500000, max_risk_per_trade = 0.015}
+   # ... rest from your config.yaml
    ```
 
 ### Cloud Limitations

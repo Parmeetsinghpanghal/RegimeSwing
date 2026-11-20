@@ -14,6 +14,9 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import sys
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add project root to path - works both locally and on Streamlit Cloud
 ROOT_DIR = Path(__file__).parent.parent.absolute()
@@ -128,10 +131,10 @@ def get_default_config():
         },
         'regime': {
             'nifty_symbol': "NIFTY 50",
-            'bull_conditions': ['close > ema50', 'ema50 > ema200', 'adx > 20'],
-            'bear_conditions': ['close < ema200', 'adx > 20'],
-            'sideways_conditions': ['abs(ema50 - ema200) / ema200 < 0.03', 'adx < 20'],
-            'volatile_conditions': ['vix > 22', 'atr_pct > 0.02'],
+            'bull_conditions': {'adx_min': 20},
+            'bear_conditions': {'adx_min': 20},
+            'sideways_conditions': {'ema_tolerance': 0.03, 'adx_max': 20},
+            'volatile_conditions': {'vix_threshold': 22, 'atr_pct_threshold': 0.02},
             'size_multiplier': {'bull': 1.0, 'bear': 0.0, 'sideways': 0.7, 'volatile': 0.5}
         },
         'targets': {
@@ -626,6 +629,7 @@ def render_backtest_page(params):
 
 def run_signal_generation(config, symbols, strategy, start_date, end_date):
     """Generate signals for a single period."""
+    global logger
     from data.fetcher import create_fetcher
     from indicators.technical import add_all_indicators, ensure_multiindex
     from indicators.regime import RegimeDetector
