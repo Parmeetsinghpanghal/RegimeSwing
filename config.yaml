@@ -154,18 +154,15 @@ options:
 regime:
   nifty_symbol: "NIFTY 50"
   bull_conditions:
-    - "close > ema50"
-    - "ema50 > ema200"
-    - "adx > 20"
+    adx_min: 20
   bear_conditions:
-    - "close < ema200"
-    - "adx > 20"
+    adx_min: 20
   sideways_conditions:
-    - "abs(ema50 - ema200) / ema200 < 0.03"
-    - "adx < 20"
+    ema_tolerance: 0.03
+    adx_max: 20
   volatile_conditions:
-    - "vix > 22"
-    - "atr_pct > 0.02"
+    vix_threshold: 22
+    atr_pct_threshold: 0.02
 
   # Position size multipliers by regime
   size_multiplier:
