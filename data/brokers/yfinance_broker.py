@@ -115,12 +115,16 @@ class YFinanceBroker:
 
                 # Flatten multi-index columns if present
                 if isinstance(df.columns, pd.MultiIndex):
-                    # Try to get the first level (OHLCV data)
+                    # yfinance with group_by='ticker' creates:
+                    # Level 0: Ticker symbol (e.g., 'RELIANCE.NS')
+                    # Level 1: OHLCV columns ('Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close')
+                    # We need level 1 (OHLCV data)
                     try:
-                        df.columns = df.columns.get_level_values(0)
-                    except Exception:
-                        # If that fails, try the second level
                         df.columns = df.columns.get_level_values(1)
+                    except Exception:
+                        logger.warning(f"Could not flatten multi-index columns for {symbol}")
+                        failed_symbols.append(symbol)
+                        continue
 
                 # Standardize column names - handle various formats
                 # yfinance may return: 'Open', 'High', 'Low', 'Close', 'Volume'
