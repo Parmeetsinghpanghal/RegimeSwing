@@ -265,7 +265,8 @@ class YFinanceBroker:
                 return pd.DataFrame()
 
             if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
+                # For ^NSEI, level 0 is the ticker, level 1 is OHLCV
+                df.columns = df.columns.get_level_values(1)
             df.columns = [c.capitalize() for c in df.columns]
             df.index = pd.to_datetime(df.index)
             return df[['Open', 'High', 'Low', 'Close', 'Volume']]
