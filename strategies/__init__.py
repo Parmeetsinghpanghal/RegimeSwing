@@ -19,6 +19,14 @@ from .options import (
     CreditSpreadsStrategy,
 )
 
+from .scoring import (
+    MultiFactorScorer,
+    SwingScore,
+    FactorScore,
+    create_scorer,
+    score_and_rank,
+)
+
 __all__ = [
     # Swing strategies
     'run_all_strategies',
@@ -34,4 +42,11 @@ __all__ = [
     'CoveredCallsStrategy',
     'WheelStrategy',
     'CreditSpreadsStrategy',
+
+    # Scoring
+    'MultiFactorScorer',
+    'SwingScore',
+    'FactorScore',
+    'create_scorer',
+    'score_and_rank',
 ]

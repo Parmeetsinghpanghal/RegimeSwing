@@ -1,6 +1,6 @@
 """
 Data Fetcher Module - Unified interface for price, options, and fundamental data.
-Uses Broker Abstraction Layer to support multiple brokers.
+Uses Broker Abstraction Layer with new OHLCVCache and Universe modules.
 """
 
 import os
@@ -11,14 +11,24 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import requests
 import asyncio
 
 # Import broker abstraction
 from .brokers import BrokerFactory, BrokerConfig, BrokerType
 
+# Import new cache and universe modules
+from .cache import OHLCVCache, get_cache
+from .universe import get_nifty200_symbols, get_nifty50_symbols, get_nifty100_symbols, get_universe
+
 logger = logging.getLogger(__name__)
+
+# Check yfinance availability
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
+    yf = None
 
 
 class PriceData:
@@ -97,7 +107,7 @@ class FundamentalsData:
 
 
 class DataFetcher:
-    """Unified data fetcher with Broker Abstraction Layer.
+    """Unified data fetcher with Broker Abstraction Layer + OHLCVCache.
     Supports Kite Connect (primary) + yfinance (fallback) + other brokers.
     """
 
@@ -108,8 +118,10 @@ class DataFetcher:
         self.data_config = self.config.get('data', {})
         self.costs_config = self.config.get('costs', {})
         self.broker_config = self.config.get('broker', {})
-        self.cache_dir = Path(self.data_config.get('cache_dir', './data/cache'))
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize OHLCV cache for yfinance (fast, batched, cached)
+        cache_ttl = self.data_config.get('cache_ttl_hours', 24)
+        self.cache = OHLCVCache(default_ttl_hours=cache_ttl)
 
         # Determine broker type
         broker_type_str = self.broker_config.get('type', 'yfinance').lower()
@@ -123,46 +135,15 @@ class DataFetcher:
         broker_type_str = broker_type_map.get(broker_type_str, 'yfinance')
 
         # Create broker config
-        broker_config = {
-            'api_key': self.broker_config.get('api_key', ''),
-            'api_secret': self.broker_config.get('api_secret', ''),
-            'access_token': self.broker_config.get('access_token', ''),
-            'client_id': self.broker_config.get('client_id', ''),
-            'totp_secret': self.broker_config.get('totp_secret', ''),
-            'redirect_url': self.broker_config.get('redirect_url', ''),
-        }
-
-        # Create broker
-        from .brokers import BrokerFactory, BrokerConfig, BrokerType
-
-        broker_type_str = self.broker_config.get('type', 'yfinance').lower()
-        broker_type_map = {
-            'yfinance': 'yfinance',
-            'zerodha': 'zerodha',
-            'angel_one': 'angel_one',
-            'groww': 'groww',
-            'dhan': 'dhan',
-        }
-        broker_type_str = broker_type_map.get(broker_type_str, 'yfinance')
-
-        broker_config = {
-            'api_key': self.broker_config.get('api_key', ''),
-            'api_secret': self.broker_config.get('api_secret', ''),
-            'access_token': self.broker_config.get('access_token', ''),
-            'client_id': self.broker_config.get('client_id', ''),
-            'totp_secret': self.broker_config.get('totp_secret', ''),
-            'redirect_url': self.broker_config.get('redirect_url', ''),
-        }
-
-        # Create broker
         try:
             broker_type_enum = BrokerType(broker_type_str)
         except ValueError:
             logger.warning(f"Unknown broker type {broker_type_str}, defaulting to yfinance")
             broker_type_str = 'yfinance'
+            broker_type_enum = BrokerType.YFINANCE
 
         broker_config_obj = BrokerConfig(
-            broker_type=BrokerType(broker_type_str),
+            broker_type=broker_type_enum,
             api_key=self.broker_config.get('api_key', ''),
             api_secret=self.broker_config.get('api_secret', ''),
             access_token=self.broker_config.get('access_token', ''),
@@ -170,182 +151,25 @@ class DataFetcher:
             totp_secret=self.broker_config.get('totp_secret', ''),
             redirect_url=self.broker_config.get('redirect_url', ''),
             rate_limit=self.broker_config.get('rate_limit', 3),
-            cache_ttl_hours=self.data_config.get('cache_ttl_hours', 24),
+            cache_ttl_hours=cache_ttl,
             fallback_enabled=self.data_config.get('fallback_enabled', True),
         )
 
         # Create broker
-        self.broker = BrokerFactory.create(BrokerConfig(
-            broker_type=BrokerType(broker_type_str),
-            api_key=self.broker_config.get('api_key', ''),
-            api_secret=self.broker_config.get('api_secret', ''),
-            access_token=self.broker_config.get('access_token', ''),
-            client_id=self.broker_config.get('client_id', ''),
-            totp_secret=self.broker_config.get('totp_secret', ''),
-            redirect_url=self.broker_config.get('redirect_url', ''),
-        ))
+        self.broker = BrokerFactory.create(broker_config_obj)
 
         # Initialize broker
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.broker.initialize())
 
-        # Nifty 200 symbols (subset - extend as needed)
-        self.nifty200_symbols = self._get_nifty200_symbols()
+        # Universe symbols - use new dynamic fetcher
+        self.nifty200_symbols = get_nifty200_symbols()
+        self.nifty50_symbols = get_nifty50_symbols()
+        self.nifty100_symbols = get_nifty100_symbols()
 
         # Corporate actions cache
         self.corporate_actions = {}
-
-    def _get_nifty200_symbols(self) -> List[str]:
-        """Get Nifty 200 symbols. In production, fetch from NSE."""
-        # Core Nifty 50 + Next 50 + midcaps - extend for full 200
-        return [
-            "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "HINDUNILVR", "ITC",
-            "SBIN", "BHARTIARTL", "BAJFINANCE", "LT", "ASIANPAINT", "MARUTI", "SUNPHARMA",
-            "TITAN", "AXISBANK", "KOTAKBANK", "M&M", "ULTRACEMCO", "BAJAJFINSV",
-            "NESTLEIND", "POWERGRID", "NTPC", "TECHM", "WIPRO", "ADANIENT", "ADANIPORTS",
-            "COALINDIA", "ONGC", "TATASTEEL", "JSWSTEEL", "HINDALCO", "INDUSINDBK",
-            "CIPLA", "DRREDDY", "APOLLOHOSP", "DIVISLAB", "BPCL", "IOC", "GRASIM",
-            "BRITANNIA", "EICHERMOT", "HEROMOTOCO", "BAJAJ-AUTO", "TATAMOTORS",
-            "TATACONSUM", "UPL", "SHREECEM", "SBILIFE", "HDFCLIFE", "ICICIPRULI",
-            "PIDILITIND", "BERGEPAINT", "HAVELLS", "DABUR", "MARICO", "GODREJCP",
-            "COLPAL", "UBL", "MCDOWELL-N", "VBL", "RADICO", "SOMANYCERA",
-            "KANSAINER", "NOCIL", "NAVINFLUOR", "SRF", "ATUL", "GUJALKALI",
-            "DEEPAKNTR", "AARTIIND", "VINATIORGA", "LAURUSLABS", "GRANULES",
-            "NATCOPHARM", "ALKEM", "TORNTPHARM", "IPCA", "ABBOTINDIA", "PFIZER",
-            "GLAXO", "SANOFI", "PFIZER", "LUPIN", "AUROPHARMA", "BIOCON",
-            "CADILAHC", "GLENMARK", "TORNTPHARM", "STRIDES", "CAPLIN", "SUVEN",
-        ]
-
-    def _symbol_to_yahoo(self, symbol: str) -> str:
-        """Convert NSE symbol to Yahoo Finance format."""
-        return f"{symbol}.NS"
-
-    def _symbol_to_kite(self, symbol: str) -> str:
-        """Convert to Kite format (NSE:SYMBOL)."""
-        return f"NSE:{symbol}"
-
-    def _get_cache_path(self, symbol: str, timeframe: str, data_type: str = "price") -> Path:
-        """Generate cache file path."""
-        safe_symbol = symbol.replace("&", "").replace("-", "_")
-        return self.cache_dir / f"{safe_symbol}_{timeframe}_{data_type}.parquet"
-
-    def _load_from_cache(self, cache_path: Path, max_age_hours: int = 24) -> Optional[pd.DataFrame]:
-        """Load data from cache if fresh enough."""
-        if not cache_path.exists():
-            return None
-
-        # Check age
-        mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
-        if datetime.now() - mtime > timedelta(hours=max_age_hours):
-            return None
-
-        try:
-            df = pd.read_parquet(cache_path)
-            logger.debug(f"Loaded {len(df)} rows from cache: {cache_path.name}")
-            return df
-        except Exception as e:
-            logger.warning(f"Cache read failed for {cache_path}: {e}")
-            return None
-
-    def _save_to_cache(self, df: pd.DataFrame, cache_path: Path):
-        """Save data to cache."""
-        try:
-            df.to_parquet(cache_path, compression='snappy')
-            logger.debug(f"Saved {len(df)} rows to cache: {cache_path.name}")
-        except Exception as e:
-            logger.warning(f"Cache write failed for {cache_path}: {e}")
-
-    async def _fetch_kite_historical(self, symbol: str, interval: str, from_date: datetime, to_date: datetime) -> pd.DataFrame:
-        """Fetch historical data from Kite Connect."""
-        # This would be implemented for Zerodha broker
-        # For now, fallback to yfinance
-        return await self._fetch_yfinance(symbol, "2y", "1d")
-
-    def _get_instrument_token(self, symbol: str) -> Optional[int]:
-        """Get instrument token for symbol. Cache instruments."""
-        cache_path = self.cache_dir / "instruments.parquet"
-
-        # Load or fetch instruments
-        if cache_path.exists():
-            try:
-                instruments = pd.read_parquet(cache_path)
-            except Exception:
-                instruments = None
-        else:
-            instruments = None
-
-        if instruments is None and self.kite:
-            try:
-                instruments = pd.DataFrame(self.kite.instruments("NSE"))
-                instruments.to_parquet(cache_path, compression='snappy')
-            except Exception as e:
-                logger.error(f"Failed to fetch instruments: {e}")
-                return None
-
-        if instruments is not None:
-            match = instruments[
-                (instruments['tradingsymbol'] == symbol) &
-                (instruments['segment'] == 'NSE') &
-                (instruments['instrument_type'] == 'EQ')
-            ]
-            if not match.empty:
-                return int(match.iloc[0]['instrument_token'])
-
-        return None
-
-    async def _fetch_yfinance(self, symbol: str, period: str, interval: str) -> pd.DataFrame:
-        """Fetch data from Yahoo Finance with robust error handling."""
-        if not YFINANCE_AVAILABLE:
-            raise RuntimeError("yfinance not available")
-
-        yf_symbol = f"{symbol}.NS"
-        max_retries = 3
-
-        for attempt in range(max_retries):
-            try:
-                df = yf.download(
-                    yf_symbol,
-                    period=period,
-                    interval=interval,
-                    progress=False,
-                    auto_adjust=False,
-                    threads=False  # Disable threading to avoid issues
-                )
-
-                if df.empty:
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                        continue
-                    return pd.DataFrame()
-
-                # Flatten multi-index columns if present
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-
-                # Standardize column names
-                df.columns = [c.capitalize() for c in df.columns]
-                df.index = pd.to_datetime(df.index)
-
-                # Ensure we have required columns
-                required = ['Open', 'High', 'Low', 'Close', 'Volume']
-                for col in required:
-                    if col not in df.columns:
-                        logger.warning(f"Missing column {col} for {symbol}")
-                        return pd.DataFrame()
-
-                return df[required]
-
-            except Exception as e:
-                logger.warning(f"yfinance fetch attempt {attempt + 1} failed for {symbol}: {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                    continue
-                logger.error(f"All yfinance attempts failed for {symbol}: {e}")
-                return pd.DataFrame()
-
-        return pd.DataFrame()
 
     def get_price_data(
         self,
@@ -359,10 +183,23 @@ class DataFetcher:
         """
         Get price data for one or more symbols.
 
-        Returns MultiIndex DataFrame: (date, symbol) with OHLCV columns.
+        Uses OHLCVCache for yfinance (fast, batched, cached).
+        Falls back to broker for other sources.
+
+        Returns MultiIndex DataFrame: (Symbol, Date) with OHLCV columns.
         """
-        # Use broker to fetch data
-        import asyncio
+        # Use cache for yfinance broker
+        if self.broker.config.broker_type == BrokerType.YFINANCE:
+            return self.cache.get_price_data(
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                period=period,
+                interval=interval,
+                use_cache=use_cache
+            )
+
+        # For other brokers, use broker directly
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         df = loop.run_until_complete(self.broker.get_price_data(
@@ -377,31 +214,45 @@ class DataFetcher:
 
     def get_option_chain(self, symbol: str, expiry: Optional[str] = None) -> pd.DataFrame:
         """Get option chain for symbol."""
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(self.broker.get_option_chain(symbol, expiry))
 
     def get_fundamentals(self, symbols: List[str]) -> pd.DataFrame:
         """Get fundamental data."""
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(self.broker.get_fundamentals(symbols))
 
     def get_nifty_index_data(self, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
         """Get Nifty 50 index data for regime detection."""
-        import asyncio
+        # Use cache for yfinance
+        if self.broker.config.broker_type == BrokerType.YFINANCE:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(self.cache.get_nifty_index_data(period, interval))
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(self.broker.get_nifty_index_data(period, interval))
 
     def health_check(self) -> Dict:
         """Check data pipeline health."""
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(self.broker.health_check())
+
+    def get_universe(self, universe: str = "nifty200") -> List[str]:
+        """Get symbols for a universe."""
+        return get_universe(universe)
+
+    def refresh_universe(self, force: bool = False):
+        """Refresh universe symbols from NSE."""
+        if force or not self.nifty200_symbols:
+            from .universe import fetch_nifty200_constituents
+            self.nifty200_symbols = fetch_nifty200_constituents(force_refresh=force)
+            self.nifty50_symbols = self.nifty200_symbols[:50]
+            self.nifty100_symbols = self.nifty200_symbols[:100]
 
 
 # Convenience functions
@@ -426,6 +277,11 @@ if __name__ == "__main__":
     health = fetcher.health_check()
     print("Health Check:", health)
 
+    # Test universe
+    print(f"Nifty 200: {len(fetcher.nifty200_symbols)} symbols")
+    print(f"Nifty 50: {len(fetcher.nifty50_symbols)} symbols")
+    print(f"Nifty 100: {len(fetcher.nifty100_symbols)} symbols")
+
     # Fetch test data
     df = fetcher.get_price_data(["RELIANCE", "TCS"], period="3mo", interval="1d")
     print(f"\nFetched {len(df)} rows for {df.index.get_level_values('Symbol').nunique()} symbols")
@@ -434,3 +290,6 @@ if __name__ == "__main__":
     # Test fundamentals
     fund = fetcher.get_fundamentals(["RELIANCE", "TCS"])
     print(f"\nFundamentals:\n{fund}")
+
+    # Cache stats
+    print(f"\nCache stats: {fetcher.cache.get_cache_stats()}")

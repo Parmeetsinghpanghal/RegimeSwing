@@ -1,0 +1,31 @@
+# Streamlit Configuration for RegimeSwing Dashboard
+
+[server]
+headless = true
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 50
+maxMessageSize = 50
+
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[theme]
+base = "dark"
+primaryColor = "#00cc88"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#1e2329"
+textColor = "#fafafa"
+font = "sans serif"
+
+[runner]
+magicEnabled = true
+installTracer = false
+fixMatplotlib = true
+
+[logger]
+level = "info"
+messageFormat = "%(asctime)s | %(levelname)s | %(message)s"
