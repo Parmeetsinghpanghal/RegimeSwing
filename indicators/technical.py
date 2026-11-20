@@ -174,6 +174,39 @@ def add_supertrend(df: pd.DataFrame, period: int = 10, mult: float = 3.0) -> pd.
     return apply_per_symbol(df, _supertrend)
 
 
+def add_chandelier_exit(df: pd.DataFrame, period: int = 22, mult: float = 3.0) -> pd.DataFrame:
+    """Add Chandelier Exit (trailing stop) using pure-pandas.
+
+    Chandelier Exit = Highest High - (mult * ATR) for longs
+    Chandelier Exit = Lowest Low + (mult * ATR) for shorts
+    """
+    def _chandelier(sdf):
+        if len(sdf) < period:
+            return sdf
+
+        high = sdf['High']
+        low = sdf['Low']
+        close = sdf['Close']
+
+        # Calculate ATR
+        tr1 = high - low
+        tr2 = (high - close.shift(1)).abs()
+        tr3 = (low - close.shift(1)).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(window=period, min_periods=1).mean()
+
+        # Chandelier Exit
+        highest_high = high.rolling(window=period, min_periods=1).max()
+        lowest_low = low.rolling(window=period, min_periods=1).min()
+
+        sdf['Chandelier_Long'] = highest_high - (mult * atr)
+        sdf['Chandelier_Short'] = lowest_low + (mult * atr)
+
+        return sdf
+
+    return apply_per_symbol(df, _chandelier)
+
+
 def add_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
     """Add MACD using pure-pandas."""
     def _macd(sdf):
