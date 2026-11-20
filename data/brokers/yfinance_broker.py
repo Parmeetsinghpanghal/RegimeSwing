@@ -110,19 +110,58 @@ class YFinanceBroker:
                     failed_symbols.append(symbol)
                     continue
 
+                # Debug: log actual columns received
+                logger.debug(f"Raw columns for {symbol}: {list(df.columns)}")
+
                 # Flatten multi-index columns if present
                 if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
+                    # Try to get the first level (OHLCV data)
+                    try:
+                        df.columns = df.columns.get_level_values(0)
+                    except Exception:
+                        # If that fails, try the second level
+                        df.columns = df.columns.get_level_values(1)
 
-                # Standardize column names
-                df.columns = [c.capitalize() for c in df.columns]
+                # Standardize column names - handle various formats
+                # yfinance may return: 'Open', 'High', 'Low', 'Close', 'Volume'
+                # or 'open', 'high', 'low', 'close', 'volume'
+                # or 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME'
+                # Map to standard capitalized format
+                col_mapping = {}
+                for col in df.columns:
+                    col_lower = col.lower()
+                    if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                        col_mapping[col] = col_lower.capitalize().replace('_', ' ')
+                    elif col_lower == 'adj close':
+                        col_mapping[col] = 'Adj Close'
+
+                if col_mapping:
+                    df.rename(columns=col_mapping, inplace=True)
+
                 df.index = pd.to_datetime(df.index)
 
-                # Ensure we have required columns
+                # Ensure we have required columns (case-insensitive check)
                 required = ['Open', 'High', 'Low', 'Close', 'Volume']
                 missing_cols = [col for col in required if col not in df.columns]
+
+                # Try alternative column names if standard ones missing
+                alt_names = {
+                    'Open': ['open', 'OPEN', 'Open Price'],
+                    'High': ['high', 'HIGH', 'High Price'],
+                    'Low': ['low', 'LOW', 'Low Price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
+                    'Volume': ['volume', 'VOLUME', 'Vol']
+                }
+
+                for req_col in missing_cols[:]:
+                    for alt in alt_names.get(req_col, []):
+                        if alt in df.columns:
+                            df[req_col] = df[alt]
+                            missing_cols.remove(req_col)
+                            break
+
                 if missing_cols:
-                    logger.warning(f"Missing columns {missing_cols} for {symbol}")
+                    logger.warning(f"Missing columns {missing_cols} for {symbol} (available: {list(df.columns)})")
                     failed_symbols.append(symbol)
                     continue
 
