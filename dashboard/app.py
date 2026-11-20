@@ -409,6 +409,25 @@ def render_dashboard_page(params):
     try:
         fetcher = create_fetcher()
         nifty_df = fetcher.get_nifty_index_data(period="1y", interval="1d")
+        # Handle Nifty column names (same as regular symbols)
+        if not nifty_df.empty:
+            # Flatten multi-index columns if present
+            if isinstance(nifty_df.columns, pd.MultiIndex):
+                try:
+                    nifty_df.columns = nifty_df.columns.get_level_values(1)
+                except Exception:
+                    pass
+            # Standardize column names
+            col_mapping = {}
+            for col in nifty_df.columns:
+                col_lower = col.lower()
+                if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                    col_mapping[col] = col_lower.capitalize().replace('_', ' ')
+                elif col_lower == 'adj close':
+                    col_mapping[col] = 'Adj Close'
+            if col_mapping:
+                nifty_df.rename(columns=col_mapping, inplace=True)
+            nifty_df.index = pd.to_datetime(nifty_df.index)
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
 
@@ -578,6 +597,25 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
             period=f"{(end_date - start_date).days}d",
             interval="1d"
         )
+        # Handle Nifty column names (same as regular symbols)
+        if not nifty_df.empty:
+            # Flatten multi-index columns if present
+            if isinstance(nifty_df.columns, pd.MultiIndex):
+                try:
+                    nifty_df.columns = nifty_df.columns.get_level_values(1)
+                except Exception:
+                    pass
+            # Standardize column names
+            col_mapping = {}
+            for col in nifty_df.columns:
+                col_lower = col.lower()
+                if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                    col_mapping[col] = col_lower.capitalize().replace('_', ' ')
+                elif col_lower == 'adj close':
+                    col_mapping[col] = 'Adj Close'
+            if col_mapping:
+                nifty_df.rename(columns=col_mapping, inplace=True)
+            nifty_df.index = pd.to_datetime(nifty_df.index)
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
 
@@ -834,6 +872,25 @@ def render_regime_page(params):
     try:
         fetcher = create_fetcher()
         nifty_df = fetcher.get_nifty_index_data(period="2y", interval="1d")
+        # Handle Nifty column names (same as regular symbols)
+        if not nifty_df.empty:
+            # Flatten multi-index columns if present
+            if isinstance(nifty_df.columns, pd.MultiIndex):
+                try:
+                    nifty_df.columns = nifty_df.columns.get_level_values(1)
+                except Exception:
+                    pass
+            # Standardize column names
+            col_mapping = {}
+            for col in nifty_df.columns:
+                col_lower = col.lower()
+                if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                    col_mapping[col] = col_lower.capitalize().replace('_', ' ')
+                elif col_lower == 'adj close':
+                    col_mapping[col] = 'Adj Close'
+            if col_mapping:
+                nifty_df.rename(columns=col_mapping, inplace=True)
+            nifty_df.index = pd.to_datetime(nifty_df.index)
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
 
