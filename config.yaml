@@ -1,0 +1,474 @@
+# Swing Trading + Options Selling Toolkit Configuration
+# Edit values to match your capital, risk tolerance, and broker
+
+# ============================================================
+# CAPITAL & RISK
+# ============================================================
+capital:
+  initial: 500000          # Starting capital (INR)
+  max_risk_per_trade: 0.015   # 1.5% of capital per trade
+  max_portfolio_risk: 0.06    # 6% total portfolio risk (sum of position risks)
+  max_position_pct: 0.05      # 5% max in single position
+  max_sector_pct: 0.25        # 25% max in single sector
+  max_positions: 10           # Max concurrent swing positions
+  correlation_threshold: 0.7  # Don't enter if correlated > 0.7 with existing
+  cash_reserve_pct: 0.10      # Keep 10% cash for adjustments/opportunities
+
+# Drawdown circuit breakers
+drawdown_circuits:
+  daily_loss_limit: 0.03      # -3% daily → halve position sizes
+  daily_stop_limit: 0.05      # -5% daily → stop new entries
+  total_dd_warn: 0.08         # -8% total → warn
+  total_dd_reduce: 0.12       # -12% total → reduce all positions 50%
+  total_dd_stop: 0.15         # -15% total → stop all new entries
+
+# ============================================================
+# DATA SETTINGS
+# ============================================================
+data:
+  universe: "nifty200"        # nifty50, nifty100, nifty200, nifty500
+  lookback_days: 1000         # Daily data lookback for backtest
+  timeframe: "1d"             # 1d for swing, 15m/5m for intraday scans
+  cache_dir: "./data/cache"   # Local parquet cache
+  use_kite_historical: true   # Use Kite Connect for historical (requires auth)
+  fallback_yfinance: true     # Fallback to yfinance if Kite fails
+  corporate_actions_adjust: true  # Adjust for splits, dividends, bonuses
+
+# ============================================================
+# TRADING COSTS (Realistic for Indian markets)
+# ============================================================
+costs:
+  brokerage_per_order: 20      # Flat ₹20 per order (Zerodha/Fyers)
+  stt_equity_delivery: 0.001   # 0.1% on sell side (delivery)
+  stt_equity_intraday: 0.00025 # 0.025% on sell side (intraday)
+  stt_options_sell: 0.000625   # 0.0625% on premium (sell side)
+  exchange_charges: 0.0000345  # NSE: 0.00345%
+  sebi_charges: 0.000001       # ₹1 per crore
+  stamp_duty: 0.00015          # 0.015% on buy side (delivery)
+  slippage_bps_equity: 15      # 0.15% slippage for liquid stocks
+  slippage_bps_options: 50     # 0.50% slippage for options
+  slippage_bps_illiquid: 100   # 1% for illiquid options
+
+# ============================================================
+# SWING STRATEGY PARAMETERS
+# ============================================================
+swing:
+  # Trend Pullback Strategy
+  trend_pullback:
+    enabled: true
+    ema_fast: 20
+    ema_medium: 50
+    ema_slow: 200
+    adx_min: 25
+    pullback_zone_atr_mult: 0.5    # Entry within 0.5*ATR of EMA20
+    rsi_min: 40
+    rsi_max: 55
+    volume_mult: 1.2               # Volume > 1.2x 20-day avg
+    stop_atr_mult: 2.0             # Stop = 2*ATR or swing low
+    target_r_mult: [1.5, 2.5]      # T1=1.5R, T2=2.5R
+    trail_atr_mult: 3.0            # Trail with Chandelier(22,3)
+    max_hold_days: 20
+
+  # Breakout Volume Strategy
+  breakout_volume:
+    enabled: true
+    lookback_days: 20
+    volume_mult: 1.5               # Volume > 1.5x avg on breakout
+    min_consolidation_days: 10     # Min days in consolidation
+    max_consolidation_range: 0.08  # Max 8% range during consolidation
+    stop_atr_mult: 1.5
+    target_r_mult: [2.0, 3.0]
+    trail_method: "donchian_20"    # Trail with 20-day low
+    market_regime_filter: true     # Only if Nifty > EMA50
+
+  # Mean Reversion (Bollinger Bands)
+  mean_reversion_bb:
+    enabled: true
+    bb_period: 20
+    bb_std: 2.0
+    rsi_max: 30
+    adx_max: 20                    # Only in ranging markets
+    entry_confirmation: "close_inside_bb"  # Close back inside BB + bullish candle
+    stop_atr_mult: 1.0
+    target_levels: ["bb_mid", "bb_upper"]  # Target middle then upper band
+    max_hold_days: 10
+    quick_exit_days: 3             # Exit if not moved 2% in 3 days
+    market_regime_filter: true     # Only if Nifty > EMA200
+
+# ============================================================
+# OPTIONS SELLING PARAMETERS
+# ============================================================
+options:
+  # Cash-Secured Puts
+  cash_secured_puts:
+    enabled: true
+    iv_rank_min: 60                # Only sell when IV Rank > 60
+    iv_percentile_min: 50
+    delta_target_min: 0.25
+    delta_target_max: 0.30
+    dte_min: 30
+    dte_max: 45
+    premium_per_month_min: 0.015   # > 1.5% of strike per month (annualized > 18%)
+    delivery_pct_min: 50           # Stock delivery > 50%
+    trend_filter: true             # Stock > EMA50 > EMA200
+    earnings_buffer_days: 5        # No earnings within DTE + 5 days
+    management:
+      close_at_profit_pct: 0.50    # Close at 50% premium captured
+      roll_at_dte: 21              # Roll at 21 DTE if tested
+      stop_loss_mult: 2.0          # Stop at 2x premium received
+      assignment_action: "wheel"   # If assigned → transition to Wheel
+
+  # Covered Calls
+  covered_calls:
+    enabled: true
+    min_unrealized_gain: 0.10      # Only on positions > 10% gain
+    delta_target_min: 0.30
+    delta_target_max: 0.35
+    dte_min: 30
+    dte_max: 45
+    strike_above_cost: true        # Strike > cost basis
+    roll_if_itm_dte: 5             # Roll if ITM at 5 DTE
+    roll_strikes_up: 1
+    roll_dte_out: 21
+    target_cost_basis_reduction: 0.02  # 2% per month via premium
+
+  # Wheel Strategy (CSP → Assignment → CC → Repeat)
+  wheel:
+    enabled: true
+    max_concurrent_wheels: 3
+    min_capital_per_wheel: 200000  # ₹2L per wheel
+    sector_diversification: true
+    track_annualized_return: true
+    pause_if_annualized_below: 0.12  # Pause if < 12% annualized for 3 months
+
+  # Portfolio Greeks Limits
+  greeks_limits:
+    max_portfolio_delta: 0.30      # Net delta < 0.3
+    max_portfolio_vega: 50000      # Net vega < ₹50k
+    min_portfolio_theta: 0         # Net theta > 0 (net seller)
+    max_gamma_per_trade: 0.02
+
+# ============================================================
+# REGIME DETECTION
+# ============================================================
+regime:
+  nifty_symbol: "NIFTY 50"
+  bull_conditions:
+    - "close > ema50"
+    - "ema50 > ema200"
+    - "adx > 20"
+  bear_conditions:
+    - "close < ema200"
+    - "adx > 20"
+  sideways_conditions:
+    - "abs(ema50 - ema200) / ema200 < 0.03"
+    - "adx < 20"
+  volatile_conditions:
+    - "vix > 22"
+    - "atr_pct > 0.02"
+
+  # Position size multipliers by regime
+  size_multiplier:
+    bull: 1.0
+    bear: 0.0       # No new longs in bear
+    sideways: 0.7
+    volatile: 0.5
+
+# ============================================================
+# TARGETS & EXITS
+# ============================================================
+targets:
+  # ATR-based stops and targets
+  atr_period: 14
+  stop_atr_mult: 2.0
+  target_atr_mult: [1.5, 2.5, 3.5]  # Multiple targets
+
+  # Chandelier Exit (trailing)
+  chandelier_period: 22
+  chandelier_mult: 3.0
+
+  # Fibonacci extensions
+  fib_extensions: [1.272, 1.618, 2.0, 2.618]
+
+  # Structure-based (swing high/low)
+  use_structure_stops: true
+  structure_lookback: 20
+
+  # Time-based exits
+  force_close_hour: 15.15        # 3:15 PM
+  max_hold_days_default: 20
+  options_expiry_exit_days: 3    # Exit 3 days before expiry
+
+  # Max Pain target (for options)
+  use_max_pain_target: true
+
+# ============================================================
+# NEWS & SENTIMENT
+# ============================================================
+news:
+  enabled: true
+  sources:
+    - "moneycontrol_rss"
+    - "etmarkets_rss"
+    - "nse_announcements"
+  sentiment_model: "finbert"      # Local FinBERT (no API key)
+  cache_hours: 4
+  earnings_buffer_days: 2        # Avoid entries ±2 days around earnings
+  high_uncertainty_threshold: -0.3  # Reduce size if sentiment < -0.3
+  avoid_threshold: -0.5          # Avoid entry if sentiment < -0.5
+  sector_sentiment_weight: 0.3
+
+# ============================================================
+# TECHNICAL INDICATORS (All computed via pandas-ta)
+# ============================================================
+indicators:
+  # Trend
+  ema_periods: [9, 20, 50, 100, 200]
+  sma_periods: [20, 50, 200]
+  adx_period: 14
+  supertrend_period: 10
+  supertrend_mult: 3.0
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+
+  # Momentum
+  rsi_period: 14
+  stoch_k: 14
+  stoch_d: 3
+  roc_period: 10
+
+  # Volatility
+  atr_period: 14
+  bb_period: 20
+  bb_std: 2.0
+  keltner_period: 20
+  keltner_mult: 2.0
+  donchian_period: 20
+
+  # Volume
+  obv_enabled: true
+  vwap_enabled: true
+  volume_sma_period: 20
+  volume_profile_enabled: true
+
+  # Options-specific
+  iv_rank_lookback: 252
+  iv_percentile_lookback: 252
+
+# ============================================================
+# BACKTEST SETTINGS
+# ============================================================
+backtest:
+  start_date: "2018-01-01"
+  end_date: "2024-12-31"
+  walk_forward:
+    train_years: 3
+    test_years: 1
+    step_years: 1
+  monte_carlo:
+    enabled: true
+    simulations: 1000
+    block_size: 20  # Block bootstrap for regime preservation
+  metrics:
+    - "cagr"
+    - "sharpe"
+    - "sortino"
+    - "max_drawdown"
+    - "calmar"
+    - "win_rate"
+    - "avg_win_loss_ratio"
+    - "profit_factor"
+    - "expectancy"
+    - "kelly_pct"
+    - "ulcer_index"
+  costs_scenarios:
+    - slippage_bps_equity: 10
+      slippage_bps_options: 30
+    - slippage_bps_equity: 20
+      slippage_bps_options: 60
+    - slippage_bps_equity: 30
+      slippage_bps_options: 100
+
+# ============================================================
+# PAPER TRADING
+# ============================================================
+paper_trading:
+  enabled: true
+  initial_cash: 500000
+  fill_model: "realistic"        # realistic | optimistic | pessimistic
+  commission_model: "indian"     # Indian cost structure
+  log_file: "./logs/paper_trades.csv"
+  state_file: "./logs/paper_state.db"
+  daily_report: true
+  report_time: "16:00"
+  telegram_alerts: false
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+
+# ============================================================
+# BROKER SETTINGS (Zerodha Kite Connect)
+# ============================================================
+broker:
+  name: "kite"
+  api_key: ""                    # Set in .env or here
+  api_secret: ""                 # Set in .env or here
+  access_token: ""               # Auto-generated daily
+  use_websocket: false           # Free tier doesn't have websocket
+  rate_limit: 3                  # Requests per second
+  order_timeout: 30              # Seconds
+  retry_attempts: 3
+  retry_backoff: 1               # Seconds
+
+# ============================================================
+# ALERTS
+# ============================================================
+alerts:
+  enabled: true
+  channels:
+    console: true
+    file: true
+    telegram: false
+    email: false
+    webhook: false
+  conditions:
+    - "signal_generated"
+    - "risk_guard_triggered"
+    - "drawdown_circuit"
+    - "options_expiry_approaching"
+    - "earnings_approaching"
+  deduplication_minutes: 15
+
+# ============================================================
+# SCANNER SETTINGS (Intraday)
+# ============================================================
+scanner:
+  enabled: false                 # Requires websocket/paid data
+  timeframes: ["15m", "5m", "1m"]
+  symbols: "nifty200"
+  scan_interval_seconds: 60
+  scans:
+    consolidation_breakout:
+      enabled: true
+      min_bars: 10
+      max_range_pct: 3.0
+      volume_mult: 2.0
+    rsi_mean_reversion:
+      enabled: true
+      rsi_period: 14
+      oversold: 25
+      overbought: 75
+      require_divergence: true
+    volume_spike:
+      enabled: true
+      volume_mult: 3.0
+      lookback: 20
+    vwap_reclaim:
+      enabled: true
+      volume_mult: 1.5
+    gap_and_go:
+      enabled: true
+      min_gap_pct: 1.5
+      volume_mult: 2.0
+
+# ============================================================
+# CHARTING
+# ============================================================
+charting:
+  enabled: true
+  default_layout: "2x2"          # 2x2, 2x4, custom
+  timeframes: ["W", "D", "4h", "1h", "15m"]
+  chart_types: ["candle", "heikin_ashi", "renko", "line", "bar"]
+  indicators_overlay: true
+  drawings_persist: true
+  volume_profile: true
+  auto_sr: true
+  patterns_auto: true
+  replay_enabled: true
+  replay_speed: 10               # 10x default
+
+# ============================================================
+# LEARNING & REPLAY
+# ============================================================
+learning:
+  replay_enabled: true
+  replay_mode: "bar_by_bar"      # bar_by_bar | continuous
+  decision_trainer: true
+  ai_coach_enabled: true
+  regime_playbook: true
+  graduation_protocol_days: 30
+  journal_required: true
+
+# ============================================================
+# VOLUME PROFILE SETTINGS
+# ============================================================
+volume_profile:
+  enabled: true
+  lookback: 50              # Bars for profile calculation
+  num_bins: 50              # Price bins
+  value_area_pct: 0.70      # Value area percentage
+  show_poc: true            # Show Point of Control
+  show_vah_val: true        # Show Value Area High/Low
+  show_hvn_lvn: true        # Show High/Low Volume Nodes
+  min_hvn_volume_mult: 1.5  # HVN threshold (x avg volume)
+  max_lvn_volume_mult: 0.5  # LVN threshold (x avg volume)
+
+# ============================================================
+# SUPPORT/RESISTANCE SETTINGS
+# ============================================================
+support_resistance:
+  enabled: true
+  lookback: 100             # Bars to analyze
+  left_bars: 5              # Left bars for fractal
+  right_bars: 5             # Right bars for fractal
+  cluster_distance_pct: 0.015  # Clustering tolerance (1.5%)
+  min_touches: 2            # Minimum touches for zone
+  min_strength: 0.3         # Minimum strength score
+  show_broken_zones: false  # Show broken zones
+  zone_types: ["support", "resistance", "both"]
+
+# ============================================================
+# CANDLESTICK PATTERNS SETTINGS
+# ============================================================
+patterns:
+  enabled: true
+  min_confidence: 0.5       # Minimum confidence to display
+  single_candle: true       # Hammer, Shooting Star, Doji, Marubozu
+  two_candle: true          # Engulfing, Harami, Piercing/Dark Cloud
+  three_candle: true        # Morning/Evening Star, 3 Soldiers/Crows
+  pattern_lookback: 5       # Bars to look back for recent patterns
+  forward_bars: 10          # Bars forward for statistics
+  top_patterns: 15          # Number of top patterns to track
+
+# ============================================================
+# MULTI-TIMEFRAME CONFLUENCE SETTINGS
+# ============================================================
+multitf:
+  enabled: true
+  timeframes: ["W", "D", "4h", "1h"]  # Primary timeframes for swing
+  intraday_timeframes: ["D", "4h", "1h", "15m"]  # For intraday analysis
+  tf_weights:                 # Weights for alignment calculation
+    W: 1.0
+    D: 0.8
+    4h: 0.6
+    1h: 0.4
+    15m: 0.3
+  alignment_threshold: 0.3    # Minimum alignment for signal
+  confluence_tolerance: 0.02  # 2% tolerance for level matching
+  min_confluence_tfs: 2       # Min TFs for confluence zone
+  lookback_days:
+    W: 728    # 2 years weekly
+    D: 730    # 2 years daily
+    4h: 180   # 6 months 4h
+    1h: 60    # 2 months 1h
+    15m: 30   # 1 month 15m
+
+# ============================================================
+# LOGGING & MONITORING
+# ============================================================
+logging:
+  level: "INFO"
+  file: "./logs/toolkit.log"
+  max_size_mb: 100
+  backup_count: 5
+  health_check_interval: 300     # Seconds

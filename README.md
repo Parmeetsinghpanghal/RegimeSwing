@@ -1,0 +1,317 @@
+# Swing Trading + Options Selling Toolkit
+**Professional-grade, research-backed toolkit for Indian markets (NSE/BSE)**
+
+Built for systematic swing trading (5-20 day holds) and options selling (CSP, CC, Wheel, Credit Spreads) with regime awareness, realistic risk management, and paper trading.
+
+---
+
+## 🎯 What This Does
+
+| Feature | Description |
+|---------|-------------|
+| **Swing Strategies** | Trend Pullback, Breakout Volume, Mean Reversion (BB) |
+| **Options Strategies** | Cash-Secured Puts, Covered Calls, Wheel, Credit Spreads |
+| **Regime Detection** | Bull/Bear/Sideways/Volatile → adjusts sizing & strategy selection |
+| **Risk Management** | Portfolio-level risk limits, Greeks limits, drawdown circuits, correlation filters |
+| **Targets/Exits** | ATR/Chandelier stops, Fibonacci targets, Max Pain, time-based exits |
+| **News/Sentiment** | Free RSS sources + FinBERT sentiment → risk filter |
+| **Backtesting** | Walk-forward (3yr train/1yr test), Monte Carlo, regime attribution |
+| **Paper Trading** | Realistic fills, SQLite persistence, daily reports, stop/target management |
+| **Dashboard** | Streamlit UI: charts, signals, portfolio, regime monitor, scanner |
+
+---
+
+## 📁 Project Structure
+
+```
+swing_toolkit/
+├── config.yaml              # All parameters (edit this!)
+├── main.py                  # CLI entry point
+├── requirements.txt         # Dependencies
+├── README.md                # This file
+├── data/
+│   ├── fetcher.py           # Price/option/fundamental data (Kite + yfinance)
+│   └── news_fetcher.py      # RSS + FinBERT sentiment
+├── indicators/
+│   ├── technical.py         # 20+ indicators (EMA, RSI, ATR, BB, VWAP, etc.)
+│   ├── targets.py           # Stops, targets, trailing, position sizing
+│   └── regime.py            # Market regime detection
+├── strategies/
+│   ├── swing.py             # 3 swing strategies
+│   └── options.py           # 4 options strategies
+├── papertrade/
+│   └── engine.py            # Paper trading engine with risk guards
+├── backtest/
+│   └── engine.py            # Walk-forward backtester + Monte Carlo
+├── dashboard/
+│   └── app.py               # Streamlit dashboard
+└── logs/                    # Auto-created: trades.csv, state.db
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+```bash
+cd swing_toolkit
+pip install -r requirements.txt
+```
+
+### 2. Configure (IMPORTANT)
+Edit `config.yaml` with your settings:
+```yaml
+capital:
+  initial: 500000           # Your capital
+  max_risk_per_trade: 0.015 # 1.5% risk per trade
+
+broker:
+  api_key: ""               # Your Kite API key
+  api_secret: ""            # Your Kite API secret
+  # access_token auto-generated daily via `python main.py auth`
+```
+
+### 3. Authenticate with Kite (one-time, then daily)
+```bash
+python main.py auth
+# Follow prompts: opens browser → login → copy request_token → paste
+```
+
+### 4. Run Backtest
+```bash
+# All strategies, Nifty 200, 2020-2024
+python main.py backtest --strategy all --start 2020-01-01 --end 2024-12-31
+
+# Single strategy
+python main.py backtest --strategy trend_pullback --start 2022-01-01
+```
+
+### 5. Paper Trade (Single Cycle)
+```bash
+python main.py papertrade --once
+```
+
+### 6. Launch Dashboard
+```bash
+python main.py dashboard
+# Opens http://localhost:8501
+```
+
+### 7. Quick Scan
+```bash
+python main.py scan --symbols RELIANCE,TCS,HDFCBANK,ICICIBANK
+```
+
+### 8. Check Regime
+```bash
+python main.py regime
+```
+
+---
+
+## ⚙️ Key Configuration (config.yaml)
+
+### Risk Management
+```yaml
+capital:
+  max_risk_per_trade: 0.015      # 1.5% per trade
+  max_portfolio_risk: 0.06       # 6% total risk
+  max_position_pct: 0.05         # 5% max per position
+  max_sector_pct: 0.25           # 25% max per sector
+
+drawdown_circuits:
+  daily_loss_limit: 0.03         # -3% → halve size
+  daily_stop_limit: 0.05         # -5% → stop new entries
+  total_dd_stop: 0.15            # -15% → stop all
+```
+
+### Strategy Parameters
+```yaml
+swing:
+  trend_pullback:
+    ema_fast: 20
+    ema_medium: 50
+    ema_slow: 200
+    adx_min: 25
+    rsi_min: 40
+    rsi_max: 55
+
+  breakout_volume:
+    volume_mult: 1.5
+    min_consolidation_days: 10
+
+options:
+  cash_secured_puts:
+    iv_rank_min: 60
+    delta_target_min: 0.25
+    delta_target_max: 0.30
+    dte_min: 30
+    dte_max: 45
+```
+
+### Costs (Realistic Indian Market)
+```yaml
+costs:
+  brokerage_per_order: 20
+  stt_equity_delivery: 0.001
+  stt_options_sell: 0.000625
+  slippage_bps_equity: 15
+  slippage_bps_options: 50
+```
+
+---
+
+## 📊 Strategies Overview
+
+### Swing Strategies
+
+| Strategy | Regime | Setup | Entry | Stop | Targets |
+|----------|--------|-------|-------|------|---------|
+| **Trend Pullback** | Bull | Price > EMA50>EMA200, ADX>25, pullback to EMA20 zone | Close > EMA20 + bullish candle | Chandelier(22,3) | 1.5R, 2.5R, Trail |
+| **Breakout Volume** | Bull | 20d consolidation <8%, breakout + 1.5x vol | Close > 20d high | Below breakout low | 2R, 3R, Trail 20d low |
+| **Mean Reversion BB** | Sideways/Bull | Price ≤ Lower BB, RSI<30, ADX<20 | Close inside BB + bullish candle | Below candle low | BB Mid → BB Upper |
+
+### Options Strategies
+
+| Strategy | When | Strike | DTE | Management |
+|----------|------|--------|-----|------------|
+| **CSP** | IV Rank>60, uptrend, delivery>50% | Delta 0.25-0.30 | 30-45 | Close 50%, roll 21 DTE, stop 2x |
+| **CC** | Long pos >10% gain | Delta 0.30-0.35 | 30-45 | Roll if ITM at 5 DTE |
+| **Wheel** | CSP → Assignment → CC → Repeat | - | - | Track annualized return |
+| **Credit Spreads** | Regime-based | 0.20/0.10 delta | 21-30 | Target 50% credit |
+
+---
+
+## 🎯 Realistic Expectations
+
+| Metric | Target |
+|--------|--------|
+| **Win Rate** | 55-65% (swing), 70-80% (CSP expire worthless) |
+| **Avg R:R** | 1.5-2.5 |
+| **Expectancy** | 0.4-0.6R per trade |
+| **Net CAGR** | 15-20% post-tax |
+| **Max Drawdown** | 12-18% |
+| **Sharpe** | > 1.0 |
+
+**⚠️ Not 90% win rate** — that's a scam metric. High win rate = tiny targets = blowup risk.
+
+---
+
+## 🔧 Advanced Usage
+
+### Custom Symbol Universe
+```bash
+python main.py backtest --universe "RELIANCE,TCS,HDFCBANK,ICICIBANK,INFY,HINDUNILVR"
+```
+
+### Save Signals to JSON
+```bash
+python main.py backtest --strategy all --output signals.json
+```
+
+### Dashboard Features
+- **Dashboard**: Portfolio, regime, signals, charts
+- **Backtest**: Run walk-forward (CLI integration)
+- **Paper Trading**: Run cycle, view positions
+- **Scanner**: Quick technical scan
+- **Regime Monitor**: Historical regime analysis
+
+---
+
+## 📈 Data Sources
+
+| Data | Source | Cost |
+|------|--------|------|
+| Daily OHLCV | Kite Connect (free tier) / yfinance | Free |
+| Intraday | Kite Connect (paid ₹2000/mo for websocket) | Optional |
+| Option Chain | Kite Connect / NSE API | Free tier |
+| Fundamentals | yfinance | Free |
+| News | Moneycontrol, ET, Business Standard RSS | Free |
+| Sentiment | FinBERT (local, no API) | Free |
+
+---
+
+## ⚠️ Important Notes
+
+1. **Free Kite Tier Limits**: 3 req/sec, daily historical only, no websocket. Daily auth required.
+2. **Costs Matter**: Backtest includes STT, brokerage, slippage, stamp duty. Paper trading simulates same.
+3. **Regime Filter**: Strategies auto-disable in unfavorable regimes (e.g., no breakouts in bear).
+4. **State Persistence**: Paper trading saves to SQLite — survives crashes/restarts.
+5. **No Lookahead Bias**: Walk-forward backtest uses expanding window, no future data.
+
+---
+
+## 🛠️ Extending the Toolkit
+
+### Add New Strategy
+```python
+# strategies/swing/my_strategy.py
+from strategies.swing import BaseSwingStrategy, Signal
+
+class MyStrategy(BaseSwingStrategy):
+    def generate_signals(self, df, regime_info):
+        # Your logic
+        return signals
+
+# Register in strategies/swing/__init__.py
+STRATEGY_REGISTRY['my_strategy'] = MyStrategy
+```
+
+### Add New Indicator
+```python
+# indicators/technical.py
+def add_my_indicator(df, param=14):
+    def _calc(sdf):
+        sdf['MY_IND'] = ...  # pandas-ta or custom
+        return sdf
+    return apply_per_symbol(df, _calc)
+```
+
+---
+
+## 📚 Learning Path (Built-in)
+
+| Tool | Purpose |
+|------|---------|
+| **Bar Replay** | Practice entries on historical data (dashboard) |
+| **Strategy Lab** | Instant parameter sensitivity (change param → re-backtest) |
+| **AI Coach** | Analyzes your paper trades vs system |
+| **Regime Playbook** | Visual cheat sheets for each regime |
+| **Graduation Protocol** | 30-day paper→live transition plan |
+
+---
+
+## 🐛 Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `ModuleNotFoundError` | `pip install -r requirements.txt` |
+| Kite auth fails | Check API key/secret, run `python main.py auth` |
+| No data fetched | Check internet, try yfinance fallback |
+| Dashboard won't start | `pip install streamlit plotly` |
+| Backtest slow | Reduce symbols, disable Monte Carlo |
+
+---
+
+## 📄 License & Disclaimer
+
+**Educational/Research purposes only.** Not financial advice.
+
+- Past performance ≠ future results
+- Test thoroughly before live trading
+- Options involve substantial risk
+- Indian market regulations apply (SEBI)
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs welcome! Focus areas:
+- More option chain data sources
+- Additional patterns (Wyckoff, VCP, Harmonics)
+- ML-enhanced targets
+- Multi-broker support (Fyers, Upstox)
+
+---
+
+**Built with**: Python, pandas, pandas-ta, vectorbt, plotly, streamlit, scikit-learn, transformers (FinBERT)
