@@ -411,23 +411,53 @@ def render_dashboard_page(params):
         nifty_df = fetcher.get_nifty_index_data(period="1y", interval="1d")
         # Handle Nifty column names (same as regular symbols)
         if not nifty_df.empty:
+            # Debug: log raw columns
+            logger.info(f"Nifty raw columns: {list(nifty_df.columns)}")
+
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
                 try:
                     nifty_df.columns = nifty_df.columns.get_level_values(1)
                 except Exception:
                     pass
-            # Standardize column names
+            # Standardize column names - robust handling for ^NSEI
             col_mapping = {}
             for col in nifty_df.columns:
-                col_lower = col.lower()
-                if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
-                    col_mapping[col] = col_lower.capitalize().replace('_', ' ')
-                elif col_lower == 'adj close':
+                col_str = str(col).lower()
+                if col_str in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                    col_mapping[col] = col_str.capitalize().replace('_', ' ')
+                elif col_str == 'adj close':
                     col_mapping[col] = 'Adj Close'
             if col_mapping:
                 nifty_df.rename(columns=col_mapping, inplace=True)
             nifty_df.index = pd.to_datetime(nifty_df.index)
+
+            # Debug: log processed columns
+            logger.info(f"Nifty processed columns: {list(nifty_df.columns)}")
+
+            # Ensure required columns exist
+            required = ['Open', 'High', 'Low', 'Close', 'Volume']
+            missing = [c for c in required if c not in nifty_df.columns]
+            if missing:
+                # Try alternative column names
+                alt_map = {
+                    'Open': ['open', 'OPEN', 'Open Price'],
+                    'High': ['high', 'HIGH', 'High Price'],
+                    'Low': ['low', 'LOW', 'Low Price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
+                    'Volume': ['volume', 'VOLUME', 'Vol']
+                }
+                for req in missing[:]:
+                    for alt in alt_map.get(req, []):
+                        if alt in nifty_df.columns:
+                            nifty_df[req] = nifty_df[alt]
+                            missing.remove(req)
+                            break
+
+            if missing:
+                st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
+                st.stop()
+
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
 
@@ -599,23 +629,53 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
         )
         # Handle Nifty column names (same as regular symbols)
         if not nifty_df.empty:
+            # Debug: log raw columns
+            logger.info(f"Nifty raw columns: {list(nifty_df.columns)}")
+
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
                 try:
                     nifty_df.columns = nifty_df.columns.get_level_values(1)
                 except Exception:
                     pass
-            # Standardize column names
+            # Standardize column names - robust handling for ^NSEI
             col_mapping = {}
             for col in nifty_df.columns:
-                col_lower = col.lower()
-                if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
-                    col_mapping[col] = col_lower.capitalize().replace('_', ' ')
-                elif col_lower == 'adj close':
+                col_str = str(col).lower()
+                if col_str in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                    col_mapping[col] = col_str.capitalize().replace('_', ' ')
+                elif col_str == 'adj close':
                     col_mapping[col] = 'Adj Close'
             if col_mapping:
                 nifty_df.rename(columns=col_mapping, inplace=True)
             nifty_df.index = pd.to_datetime(nifty_df.index)
+
+            # Debug: log processed columns
+            logger.info(f"Nifty processed columns: {list(nifty_df.columns)}")
+
+            # Ensure required columns exist
+            required = ['Open', 'High', 'Low', 'Close', 'Volume']
+            missing = [c for c in required if c not in nifty_df.columns]
+            if missing:
+                # Try alternative column names
+                alt_map = {
+                    'Open': ['open', 'OPEN', 'Open Price'],
+                    'High': ['high', 'HIGH', 'High Price'],
+                    'Low': ['low', 'LOW', 'Low Price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
+                    'Volume': ['volume', 'VOLUME', 'Vol']
+                }
+                for req in missing[:]:
+                    for alt in alt_map.get(req, []):
+                        if alt in nifty_df.columns:
+                            nifty_df[req] = nifty_df[alt]
+                            missing.remove(req)
+                            break
+
+            if missing:
+                st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
+                st.stop()
+
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
 
@@ -874,23 +934,53 @@ def render_regime_page(params):
         nifty_df = fetcher.get_nifty_index_data(period="2y", interval="1d")
         # Handle Nifty column names (same as regular symbols)
         if not nifty_df.empty:
+            # Debug: log raw columns
+            logger.info(f"Nifty raw columns: {list(nifty_df.columns)}")
+
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
                 try:
                     nifty_df.columns = nifty_df.columns.get_level_values(1)
                 except Exception:
                     pass
-            # Standardize column names
+            # Standardize column names - robust handling for ^NSEI
             col_mapping = {}
             for col in nifty_df.columns:
-                col_lower = col.lower()
-                if col_lower in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
-                    col_mapping[col] = col_lower.capitalize().replace('_', ' ')
-                elif col_lower == 'adj close':
+                col_str = str(col).lower()
+                if col_str in ('open', 'high', 'low', 'close', 'volume', 'adj close', 'adj_close'):
+                    col_mapping[col] = col_str.capitalize().replace('_', ' ')
+                elif col_str == 'adj close':
                     col_mapping[col] = 'Adj Close'
             if col_mapping:
                 nifty_df.rename(columns=col_mapping, inplace=True)
             nifty_df.index = pd.to_datetime(nifty_df.index)
+
+            # Debug: log processed columns
+            logger.info(f"Nifty processed columns: {list(nifty_df.columns)}")
+
+            # Ensure required columns exist
+            required = ['Open', 'High', 'Low', 'Close', 'Volume']
+            missing = [c for c in required if c not in nifty_df.columns]
+            if missing:
+                # Try alternative column names
+                alt_map = {
+                    'Open': ['open', 'OPEN', 'Open Price'],
+                    'High': ['high', 'HIGH', 'High Price'],
+                    'Low': ['low', 'LOW', 'Low Price'],
+                    'Close': ['close', 'CLOSE', 'Close Price', 'Adj Close', 'AdjClose'],
+                    'Volume': ['volume', 'VOLUME', 'Vol']
+                }
+                for req in missing[:]:
+                    for alt in alt_map.get(req, []):
+                        if alt in nifty_df.columns:
+                            nifty_df[req] = nifty_df[alt]
+                            missing.remove(req)
+                            break
+
+            if missing:
+                st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
+                st.stop()
+
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
 
