@@ -416,13 +416,17 @@ def render_dashboard_page(params):
 
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
+                logger.info(f"Nifty multi-index levels: {nifty_df.columns.nlevels}")
+                logger.info(f"Nifty multi-index level 0: {list(nifty_df.columns.get_level_values(0))}")
+                logger.info(f"Nifty multi-index level 1: {list(nifty_df.columns.get_level_values(1))}")
                 try:
                     # Try level 1 first (OHLCV data), then level 0
                     try:
                         nifty_df.columns = nifty_df.columns.get_level_values(1)
                     except Exception:
                         nifty_df.columns = nifty_df.columns.get_level_values(0)
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Failed to flatten multi-index: {e}")
                     pass
             # Standardize column names - robust handling for ^NSEI
             col_mapping = {}
@@ -466,6 +470,16 @@ def render_dashboard_page(params):
                             nifty_df[req] = nifty_df[col]
                             missing.remove(req)
                             break
+
+            # Last resort: check if columns are numeric indices (0,1,2,3,4)
+            if missing:
+                logger.warning(f"Still missing: {missing}. Trying positional columns...")
+                if len(nifty_df.columns) >= 5:
+                    for i, req in enumerate(missing):
+                        if i < len(nifty_df.columns):
+                            nifty_df[req] = nifty_df.iloc[:, i]
+                            missing.remove(req)
+                            logger.warning(f"Mapped positional column {i} to {req}")
 
             if missing:
                 st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
@@ -647,13 +661,17 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
 
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
+                logger.info(f"Nifty multi-index levels: {nifty_df.columns.nlevels}")
+                logger.info(f"Nifty multi-index level 0: {list(nifty_df.columns.get_level_values(0))}")
+                logger.info(f"Nifty multi-index level 1: {list(nifty_df.columns.get_level_values(1))}")
                 try:
                     # Try level 1 first (OHLCV data), then level 0
                     try:
                         nifty_df.columns = nifty_df.columns.get_level_values(1)
                     except Exception:
                         nifty_df.columns = nifty_df.columns.get_level_values(0)
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Failed to flatten multi-index: {e}")
                     pass
             # Standardize column names - robust handling for ^NSEI
             col_mapping = {}
@@ -697,6 +715,16 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
                             nifty_df[req] = nifty_df[col]
                             missing.remove(req)
                             break
+
+            # Last resort: check if columns are numeric indices (0,1,2,3,4)
+            if missing:
+                logger.warning(f"Still missing: {missing}. Trying positional columns...")
+                if len(nifty_df.columns) >= 5:
+                    for i, req in enumerate(missing):
+                        if i < len(nifty_df.columns):
+                            nifty_df[req] = nifty_df.iloc[:, i]
+                            missing.remove(req)
+                            logger.warning(f"Mapped positional column {i} to {req}")
 
             if missing:
                 st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
@@ -965,13 +993,17 @@ def render_regime_page(params):
 
             # Flatten multi-index columns if present
             if isinstance(nifty_df.columns, pd.MultiIndex):
+                logger.info(f"Nifty multi-index levels: {nifty_df.columns.nlevels}")
+                logger.info(f"Nifty multi-index level 0: {list(nifty_df.columns.get_level_values(0))}")
+                logger.info(f"Nifty multi-index level 1: {list(nifty_df.columns.get_level_values(1))}")
                 try:
                     # Try level 1 first (OHLCV data), then level 0
                     try:
                         nifty_df.columns = nifty_df.columns.get_level_values(1)
                     except Exception:
                         nifty_df.columns = nifty_df.columns.get_level_values(0)
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Failed to flatten multi-index: {e}")
                     pass
             # Standardize column names - robust handling for ^NSEI
             col_mapping = {}
@@ -1016,9 +1048,19 @@ def render_regime_page(params):
                                 missing.remove(req)
                                 break
 
-            if missing:
-                st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
-                st.stop()
+                # Last resort: check if columns are numeric indices (0,1,2,3,4)
+                if missing:
+                    logger.warning(f"Still missing: {missing}. Trying positional columns...")
+                    if len(nifty_df.columns) >= 5:
+                        for i, req in enumerate(missing):
+                            if i < len(nifty_df.columns):
+                                nifty_df[req] = nifty_df.iloc[:, i]
+                                missing.remove(req)
+                                logger.warning(f"Mapped positional column {i} to {req}")
+
+                if missing:
+                    st.error(f"Nifty data missing columns: {missing}. Available: {list(nifty_df.columns)}")
+                    st.stop()
 
         nifty_df = ensure_multiindex(nifty_df)
         nifty_df = add_all_indicators(nifty_df, config)
