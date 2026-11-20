@@ -1,5 +1,6 @@
 """
 Technical Indicators Module - All indicators computed via pandas (no pandas_ta dependency).
+Fixed for pandas >= 2.0 compatibility and Streamlit Cloud deployment.
 """
 
 import pandas as pd
@@ -18,7 +19,7 @@ def ensure_multiindex(df: pd.DataFrame) -> pd.DataFrame:
     if 'Symbol' in df.columns:
         df = df.set_index('Symbol', append=True).reorder_levels(['Symbol', df.index.names[0]])
     elif df.index.name == 'Symbol' or (isinstance(df.index, pd.MultiIndex) and 'Symbol' in df.index.names):
-        pass  # Already has Symbol
+        pass
     else:
         df = df.copy()
         df['Symbol'] = 'UNKNOWN'
@@ -38,8 +39,10 @@ def apply_per_symbol(df: pd.DataFrame, func, *args, **kwargs) -> pd.DataFrame:
     """Apply function per symbol and combine results."""
     if not isinstance(df.index, pd.MultiIndex):
         return func(df, *args, **kwargs)
+
     symbols = df.index.get_level_values('Symbol').unique()
     results = []
+
     for symbol in symbols:
         sym_df = df.xs(symbol, level='Symbol')
         try:
@@ -48,8 +51,10 @@ def apply_per_symbol(df: pd.DataFrame, func, *args, **kwargs) -> pd.DataFrame:
             results.append(result)
         except Exception as e:
             logger.warning(f"Indicator failed for {symbol}: {e}")
+
     if not results:
         return pd.DataFrame()
+
     combined = pd.concat(results)
     combined.set_index('Symbol', append=True, inplace=True)
     combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
@@ -65,10 +70,12 @@ def add_ema(df: pd.DataFrame, periods: List[int] = None, column: str = 'Close') 
     """Add Exponential Moving Averages."""
     if periods is None:
         periods = [9, 20, 50, 100, 200]
+
     def _ema(sdf):
         for p in periods:
-            sdf[f'EMA_{p}'] = sdf[column].ewm(span=p).mean()
+            sdf[f'EMA_{p}'] = sdf[column].ewm(span=p, adjust=False).mean()
         return sdf
+
     return apply_per_symbol(df, _ema)
 
 
@@ -76,10 +83,12 @@ def add_sma(df: pd.DataFrame, periods: List[int] = None, column: str = 'Close') 
     """Add Simple Moving Averages."""
     if periods is None:
         periods = [20, 50, 200]
+
     def _sma(sdf):
         for p in periods:
-            sdf[f'SMA_{p}'] = sdf[column].rolling(window=p).mean()
+            sdf[f'SMA_{p}'] = sdf[column].rolling(window=p, min_periods=1).mean()
         return sdf
+
     return apply_per_symbol(df, _sma)
 
 
@@ -89,38 +98,93 @@ def add_adx(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
         high = sdf['High']
         low = sdf['Low']
         close = sdf['Close']
-        plus_dm = np.where((high > high.shift(1)) & (high > low.shift(1)), high - low, 0)
-        minus_dm = np.where((low < low.shift(1)) & (high < low.shift(1)), low - high, 0)
-        plus_dm_sma = pd.Series(pd.core.ewm(plus_dm, span=14).mean()).fillna(0)
-        minus_dm_sma = pd.Series(pd.core.ewm(minus_dm, 14).mean()).fillna(0)
-        sdf['ADX_14'] = np.where(
-            np.maximum(np.maximum(plus_dm_sma, minus_dm_sma)) > 0,
-            np.abs(plus_dm_sma - minus_dm_sma) / (np.abs(plus_dm_sma) + np.abs(minus_dm_sma)) * 100,
-            0
-        )
+
+        # True Range
+        tr1 = high - low
+        tr2 = (high - close.shift(1)).abs()
+        tr3 = (low - close.shift(1)).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        # Directional Movement
+        up_move = high - high.shift(1)
+        down_move = low.shift(1) - low
+
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+
+        # Smooth with Wilder's smoothing (EWM with alpha=1/period)
+        alpha = 1.0 / period
+        atr = tr.ewm(alpha=alpha, adjust=False).mean()
+        plus_di = 100 * pd.Series(plus_dm, index=sdf.index).ewm(alpha=alpha, adjust=False).mean() / atr
+        minus_di = 100 * pd.Series(minus_dm, index=sdf.index).ewm(alpha=alpha, adjust=False).mean() / atr
+
+        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+        sdf['ADX_14'] = dx.ewm(alpha=alpha, adjust=False).mean()
         return sdf
+
     return apply_per_symbol(df, _adx)
 
 
 def add_supertrend(df: pd.DataFrame, period: int = 10, mult: float = 3.0) -> pd.DataFrame:
     """Add Supertrend indicator using pure-pandas."""
-    df = apply_per_symbol(df, lambda sdf: None)
-    sdf = df.copy()
-    sdf['supertrend'] = sdf['Close'].rolling(window=14).mean()
-    sdf['supertrend_signal'] = 'neutral'
-    return apply_per_symbol(df, lambda sdf: None)
+    def _supertrend(sdf):
+        if len(sdf) < 10:
+            return sdf
+
+        high = sdf['High']
+        low = sdf['Low']
+        close = sdf['Close']
+
+        # Calculate ATR
+        tr1 = high - low
+        tr2 = (high - close.shift(1)).abs()
+        tr3 = (low - close.shift(1)).abs()
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr = tr.rolling(window=period, min_periods=1).mean()
+
+        # Supertrend calculation
+        hl2 = (high + low) / 2
+        basic_ub = hl2 + mult * atr
+        basic_lb = hl2 - mult * atr
+
+        final_ub = basic_ub.copy()
+        final_lb = basic_lb.copy()
+
+        for i in range(1, len(sdf)):
+            if basic_ub.iloc[i] < final_ub.iloc[i-1] or close.iloc[i-1] > final_ub.iloc[i-1]:
+                final_ub.iloc[i] = basic_ub.iloc[i]
+            else:
+                final_ub.iloc[i] = final_ub.iloc[i-1]
+
+            if basic_lb.iloc[i] > final_lb.iloc[i-1] or close.iloc[i-1] < final_lb.iloc[i-1]:
+                final_lb.iloc[i] = basic_lb.iloc[i]
+            else:
+                final_lb.iloc[i] = final_lb.iloc[i-1]
+
+        supertrend = np.where(close <= final_lb, final_ub, final_lb)
+        sdf['supertrend'] = supertrend
+        sdf['supertrend_signal'] = np.where(close <= supertrend, 'buy', 'sell')
+
+        # Also add Chandelier exits
+        sdf['Chandelier_Long'] = close - (mult * atr)
+        sdf['Chandelier_Short'] = close + (mult * atr)
+
+        return sdf
+
+    return apply_per_symbol(df, _supertrend)
 
 
 def add_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
     """Add MACD using pure-pandas."""
-    df = apply_per_symbol(df, lambda sdf: None)
-    sdf = df.copy()
-    fast_ema = sdf['Close'].ewm(span=12).mean()
-    slow_ema = sdf['Close'].ewm(span=26).mean()
-    df['macd'] = sdf['Close'] - (fast_ema - slow_ema)
-    df['macd_signal'] = sdf['Close'].rolling(window=9).mean()
-    df['macd_hist'] = df['macd'] - df['macd_signal']
-    return apply_per_symbol(df, lambda sdf: None)
+    def _macd(sdf):
+        fast_ema = sdf['Close'].ewm(span=fast, adjust=False).mean()
+        slow_ema = sdf['Close'].ewm(span=slow, adjust=False).mean()
+        sdf['MACD_12_26_9'] = fast_ema - slow_ema
+        sdf['MACDs_12_26_9'] = sdf['MACD_12_26_9'].ewm(span=signal, adjust=False).mean()
+        sdf['MACDh_12_26_9'] = sdf['MACD_12_26_9'] - sdf['MACDs_12_26_9']
+        return sdf
+
+    return apply_per_symbol(df, _macd)
 
 
 # ============================================================
@@ -133,28 +197,38 @@ def add_rsi(df: pd.DataFrame, period: int = 14, column: str = 'Close') -> pd.Dat
         delta = sdf[column].diff()
         gain = delta.clip(lower=0)
         loss = (-delta).clip(lower=0)
-        avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
-        avg_loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False).mean()
-        rs = avg_gain / avg_loss
+
+        # Wilder's smoothing
+        alpha = 1.0 / period
+        avg_gain = gain.ewm(alpha=alpha, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=alpha, adjust=False).mean()
+
+        rs = avg_gain / avg_loss.replace(0, np.nan)
         sdf['RSI_14'] = 100 - (100 / (1 + rs))
+        sdf['RSI_14'] = sdf['RSI_14'].fillna(50)
         return sdf
+
     return apply_per_symbol(df, _rsi)
 
 
 def add_stochastic(df: pd.DataFrame, k: int = 14, d: int = 3) -> pd.DataFrame:
     """Add Stochastic Oscillator using pure-pandas."""
     def _stoch(sdf):
-        sdf['stoch_k'] = (sdf['High'] - sdf['Low'].rolling(window=14).min()) / (sdf['High'].rolling(window=14).max() - sdf['Low'].rolling(window=14).max()) * 100
-        sdf['stoch_d'] = sdf['stoch_k'].rolling(window=3).mean()
+        lowest_low = sdf['Low'].rolling(window=k, min_periods=1).min()
+        highest_high = sdf['High'].rolling(window=k, min_periods=1).max()
+        sdf['STOCH_K'] = 100 * (sdf['Close'] - lowest_low) / (highest_high - lowest_low).replace(0, np.nan)
+        sdf['STOCH_D'] = sdf['STOCH_K'].rolling(window=d, min_periods=1).mean()
         return sdf
+
     return apply_per_symbol(df, _stoch)
 
 
 def add_roc(df: pd.DataFrame, period: int = 10, column: str = 'Close') -> pd.DataFrame:
     """Add Rate of Change using pure-pandas."""
     def _roc(sdf):
-        sdf[f'ROC_{period}'] = (sdf[column] - sdf[column].shift(period)) / sdf[column].shift(period) * 100
+        sdf[f'ROC_{period}'] = (sdf[column] / sdf[column].shift(period) - 1) * 100
         return sdf
+
     return apply_per_symbol(df, _roc)
 
 
@@ -166,44 +240,53 @@ def add_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     """Add Average True Range using pure-pandas."""
     def _atr(sdf):
         high_low = sdf['High'] - sdf['Low']
-        high_close = abs(sdf['High'] - sdf['Close'].shift(1))
-        low_close = abs(sdf['Low'] - sdf['Close'].shift(1))
-        sdf['TR'] = np.maximum(np.maximum(high_low, low_close), np.maximum(high_close, np.nan))
-        sdf['ATR_14'] = sdf['TR'].rolling(window=14).mean()
-        sdf = sdf.drop(columns=['TR'])
+        high_close = (sdf['High'] - sdf['Close'].shift(1)).abs()
+        low_close = (sdf['Low'] - sdf['Close'].shift(1)).abs()
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        sdf['ATR_14'] = tr.rolling(window=period, min_periods=1).mean()
         return sdf
+
     return apply_per_symbol(df, _atr)
 
 
 def add_bollinger_bands(df: pd.DataFrame, period: int = 20, std: float = 2.0) -> pd.DataFrame:
     """Add Bollinger Bands using pure-pandas."""
     def _bb(sdf):
-        sdf['SMA_20'] = sdf['Close'].rolling(window=20).mean()
-        sdf['STDEV'] = sdf['Close'].rolling(window=20).std()
-        sdf['BB_upper'] = sdf['SMA_20'] + (2 * sdf['STDEV'])
-        sdf['BB_lower'] = sdf['SMA_20'] - (2 * sdf['STDEV'])
-        sdf = sdf.drop(columns=['STDEV'])
+        sma = sdf['Close'].rolling(window=period, min_periods=1).mean()
+        std_dev = sdf['Close'].rolling(window=period, min_periods=1).std()
+        sdf['BB_upper'] = sma + (std * std_dev)
+        sdf['BB_lower'] = sma - (std * std_dev)
+        sdf['BB_middle'] = sma
+        sdf['BB_width'] = (sdf['BB_upper'] - sdf['BB_lower']) / sma
         return sdf
+
     return apply_per_symbol(df, _bb)
 
 
 def add_keltner_channel(df: pd.DataFrame, period: int = 20, mult: float = 2.0) -> pd.DataFrame:
     """Add Keltner Channels using pure-pandas."""
     def _kc(sdf):
-        sdf['SMA_20'] = sdf['Close'].rolling(window=20).mean()
-        sdf['ATR_14'] = sdf['Close'].rolling(window=14).mean()
-        sdf['upper_band'] = sdf['SMA_20'] + (std_mult * np.sqrt(sdf['ATR_14']))
-        sdf['lower_band'] = sdf['SMA_20'] - (std_mult * np.sqrt(sdf['ATR_14']))
+        sdf['KC_middle'] = sdf['Close'].rolling(window=period, min_periods=1).mean()
+        high_low = sdf['High'] - sdf['Low']
+        high_close = (sdf['High'] - sdf['Close'].shift(1)).abs()
+        low_close = (sdf['Low'] - sdf['Close'].shift(1)).abs()
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr = tr.rolling(window=period, min_periods=1).mean()
+        sdf['KC_upper'] = sdf['KC_middle'] + (mult * atr)
+        sdf['KC_lower'] = sdf['KC_middle'] - (mult * atr)
         return sdf
+
     return apply_per_symbol(df, _kc)
 
 
 def add_donchian_channel(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
     """Add Donchian Channel using pure-pandas."""
     def _dc(sdf):
-        sdf['upper'] = sdf['High'].rolling(window=20).max()
-        sdf['lower'] = sdf['Low'].rolling(window=20).min()
+        sdf['DC_upper'] = sdf['High'].rolling(window=period, min_periods=1).max()
+        sdf['DC_lower'] = sdf['Low'].rolling(window=period, min_periods=1).min()
+        sdf['DC_middle'] = (sdf['DC_upper'] + sdf['DC_lower']) / 2
         return sdf
+
     return apply_per_symbol(df, _dc)
 
 
@@ -214,25 +297,29 @@ def add_donchian_channel(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
 def add_obv(df: pd.DataFrame) -> pd.DataFrame:
     """Add On-Balance Volume using pure-pandas."""
     def _obv(sdf):
-        sdf['OBV'] = np.where(sdf['Close'].diff() > 0, sdf['Volume'].cumsum(), 0)
+        sdf['OBV'] = (np.sign(sdf['Close'].diff()) * sdf['Volume']).fillna(0).cumsum()
         return sdf
+
     return apply_per_symbol(df, _obv)
 
 
 def add_vwap(df: pd.DataFrame) -> pd.DataFrame:
     """Add Volume Weighted Average Price using pure-pandas."""
     def _vwap(sdf):
-        sdf['VWAP'] = (sdf['Close'] * sdf['Volume']).rolling(window=20).sum() / sdf['Volume'].rolling(window=20).sum()
+        typical_price = (sdf['High'] + sdf['Low'] + sdf['Close']) / 3
+        sdf['VWAP'] = (typical_price * sdf['Volume']).cumsum() / sdf['Volume'].cumsum()
         return sdf
+
     return apply_per_symbol(df, _vwap)
 
 
 def add_volume_sma(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
     """Add Volume Simple Moving Average using pure-pandas."""
     def _vsma(sdf):
-        sdf['Volume_SMA_20'] = sdf['Volume'].rolling(window=20).mean()
-        sdf['Volume_Ratio'] = sdf['Volume'] / sdf['Volume_SMA_20']
+        sdf['Volume_SMA_20'] = sdf['Volume'].rolling(window=period, min_periods=1).mean()
+        sdf['Volume_Ratio'] = sdf['Volume'] / sdf['Volume_SMA_20'].replace(0, np.nan)
         return sdf
+
     return apply_per_symbol(df, _vsma)
 
 
@@ -240,50 +327,43 @@ def add_volume_sma(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
 # ADVANCED / COMPOSITE INDICATORS
 # ============================================================
 
-def add_chandelier_exit(df: pd.DataFrame, period: int = 22, mult: float = 3.0) -> pd.DataFrame:
-    """Add Chandelier Exit (trailing stop) using pure-pandas."""
-    def _ce(sdf):
-        highest_high = sdf['High'].rolling(window=22).max()
-        lowest_low = sdf['Low'].rolling(window=22).min()
-        sdf['Chandelier_Long'] = highest_high - mult * sdf['ATR_14']
-        sdf['Chandelier_Short'] = lowest_low + mult * sdf['ATR_14']
-        return sdf
-    return apply_per_symbol(df, _ce)
-
-
 def add_vwap_bands(df: pd.DataFrame, period: int = 20, std_mult: float = 1.0) -> pd.DataFrame:
     """Add VWAP with Standard Deviation Bands using pure-pandas."""
     def _vwap_bands(sdf):
         typical = (sdf['High'] + sdf['Low'] + sdf['Close']) / 3
-        sdf['VWAP'] = (sdf['Close'] * sdf['Volume']).rolling(window=20).sum() / sdf['Volume'].rolling(window=20).sum()
-        sdf['VWAP_Upper_1SD'] = sdf['VWAP'] + (std_mult * np.sqrt(sdf['Close'].rolling(window=20).var()))
-        sdf['VWAP_Lower_1SD'] = sdf['SMA_20'] - (std_mult * np.sqrt(sdf['Close'].rolling(window=20).var()))
+        sdf['VWAP'] = (typical * sdf['Volume']).rolling(window=period, min_periods=1).sum() / sdf['Volume'].rolling(window=period, min_periods=1).sum()
+        vwap_std = sdf['Close'].rolling(window=period, min_periods=1).std()
+        sdf['VWAP_Upper_1SD'] = sdf['VWAP'] + (std_mult * vwap_std)
+        sdf['VWAP_Lower_1SD'] = sdf['VWAP'] - (std_mult * vwap_std)
         return sdf
+
     return apply_per_symbol(df, _vwap_bands)
 
 
 def add_fibonacci_levels(df: pd.DataFrame, lookback: int = 50) -> pd.DataFrame:
-    """Add Fibonacci levels using pure-pandas."""
+    """Add Fibonacci retracement levels using pure-pandas."""
     def _fib(sdf):
-        sdf['Fib_0.236'] = np.nan
-        sdf['Fib_0.382'] = np.nan
-        sdf['Fib_0.500'] = np.nan
-        sdf['Fib_0.618'] = np.nan
-        sdf['Fib_0.786'] = np.nan
-        sdf['Fib_1.272'] = np.nan
-        sdf['Fib_1.618'] = np.nan
-        sdf['Fib_2.000'] = np.nan
-        sdf['Fib_2.618'] = np.nan
+        high = sdf['High'].rolling(window=lookback, min_periods=1).max()
+        low = sdf['Low'].rolling(window=lookback, min_periods=1).min()
+        diff = high - low
+
+        sdf['Fib_0.236'] = high - 0.236 * diff
+        sdf['Fib_0.382'] = high - 0.382 * diff
+        sdf['Fib_0.500'] = high - 0.500 * diff
+        sdf['Fib_0.618'] = high - 0.618 * diff
+        sdf['Fib_0.786'] = high - 0.786 * diff
         return sdf
+
     return apply_per_symbol(df, _fib)
 
 
 def add_kase_permission_stochastic(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     """Add Kase Permission Stochastic using pure-pandas."""
     def _kps(sdf):
-        sdf['Kase_Permission'] = sdf['Close'].rolling(window=14).mean() / sdf['High'].rolling(window=14).max() * 100
+        sdf['Kase_Permission'] = sdf['Close'].rolling(window=period, min_periods=1).mean() / sdf['High'].rolling(window=period, min_periods=1).max() * 100
         sdf['Kase_Stress'] = 100 - sdf['Kase_Permission']
         return sdf
+
     return apply_per_symbol(df, _kps)
 
 
@@ -293,14 +373,14 @@ def add_kase_permission_stochastic(df: pd.DataFrame, period: int = 14) -> pd.Dat
 
 def calculate_iv_rank(iv_series: pd.Series, lookback: int = 252) -> pd.Series:
     """Calculate IV Rank (current IV percentile over lookback)."""
-    return iv_series.rolling(lookback).apply(
+    return iv_series.rolling(lookback, min_periods=1).apply(
         lambda x: (x.iloc[-1] - x.min()) / (x.max() - x.min()) * 100 if x.max() > x.min() else 50
     )
 
 
 def calculate_iv_percentile(iv_series: pd.Series, lookback: int = 252) -> pd.Series:
     """Calculate IV Percentile (percentile rank of current IV)."""
-    return iv_series.rolling(lookback).apply(
+    return iv_series.rolling(lookback, min_periods=1).apply(
         lambda x: (x < x.iloc[-1]).sum() / len(x) * 100
     )
 
@@ -308,6 +388,7 @@ def calculate_iv_percentile(iv_series: pd.Series, lookback: int = 252) -> pd.Ser
 # ============================================================
 # MASTER FUNCTION: Add All Indicators
 # ============================================================
+
 def add_all_indicators(
     df: pd.DataFrame,
     config: Optional[dict] = None
@@ -325,11 +406,11 @@ def add_all_indicators(
     if config is None:
         config = {}
 
-    # Extract indicator config
-    ind_config = config.get('indicators', {})
-
     # Ensure MultiIndex
     df = ensure_multiindex(df)
+
+    # Get indicator config - FIX: was using undefined ind_config
+    ind_config = config.get('indicators', {})
 
     logger.info(f"Adding indicators for {df.index.get_level_values('Symbol').nunique()} symbols...")
 
@@ -356,12 +437,12 @@ def add_all_indicators(
 
     # Volatility
     df = add_atr(df, ind_config.get('atr_period', 14))
-    df = add_bollinger_bands(
+    df = add_bollinger_bands(df, ind_config.get('bb_period', 20), ind_config.get('bb_std', 2.0))
+    df = add_keltner_channel(
         df,
-        ind_config.get('bb_period', 20),
-        ind_config.get('bb_std', 2.0)
+        ind_config.get('keltner_period', 20),
+        ind_config.get('keltner_mult', 2.0)
     )
-    df = add_keltner_channel(df, ind_config.get('keltner_period', 20), ind_config.get('keltner_mult', 2.0))
     df = add_donchian_channel(df, ind_config.get('donchian_period', 20))
 
     # Volume
@@ -369,8 +450,7 @@ def add_all_indicators(
     df = add_vwap(df)
     df = add_volume_sma(df, ind_config.get('volume_sma_period', 20))
 
-    # Advanced
-    df = add_chandelier_exit(df)
+    # Advanced indicators
     df = add_vwap_bands(df)
     df = add_fibonacci_levels(df)
     df = add_kase_permission_stochastic(df)
@@ -382,6 +462,7 @@ def add_all_indicators(
 # ============================================================
 # INCREMENTAL CALCULATION (for real-time updates)
 # ============================================================
+
 class IncrementalIndicators:
     """Calculate indicators incrementally for new bars (avoid full recompute)."""
 
@@ -391,7 +472,7 @@ class IncrementalIndicators:
         self.state = {}  # Symbol -> indicator state
 
     def update(self, symbol: str, new_bar: pd.Series) -> Dict:
-        """Update indicators with new bar."""
+        """Update indicators with new bar. Returns dict of new indicator values."""
         return {}
 
     def get_latest(self, symbol: str) -> Dict:
@@ -402,6 +483,8 @@ class IncrementalIndicators:
 if __name__ == "__main__":
     import pandas as pd
     import numpy as np
+
+    # Test with sample data
     df = pd.DataFrame({
         'Close': np.random.random(100),
         'High': np.random.random(100),
@@ -413,7 +496,6 @@ if __name__ == "__main__":
     df.set_index('Symbol', append=True, inplace=True)
     df = df.reorder_levels(['Symbol', 'Date'])
 
-    # Add all indicators
     config = {
         'indicators': {
             'ema_periods': [20, 50, 200],
@@ -424,5 +506,5 @@ if __name__ == "__main__":
     }
 
     df_with_ind = add_all_indicators(df, config)
-    print(f"Columns: {df.columns.tolist()}")
-    print(df.tail())
+    print(f"Columns: {df_with_ind.columns.tolist()}")
+    print(df_with_ind.tail())
