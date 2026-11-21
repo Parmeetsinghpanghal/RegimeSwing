@@ -732,8 +732,12 @@ def render_dashboard_page(params):
             should_opt, reason_opt, opt_params = detector.should_sell_options(regime)
             icon = "✅" if should_opt else "❌"
             st.write(f"{icon} Options Selling: {reason_opt}")
-            if should_opt:
-                st.json(opt_params)
+            if should_opt and opt_params:
+                with st.expander("📋 Options Parameters"):
+                    col1, col2 = st.columns(2)
+                    for i, (k, v) in enumerate(opt_params.items()):
+                        with col1 if i % 2 == 0 else col2:
+                            st.metric(k.replace('_', ' ').title(), v)
     except Exception as e:
         st.warning(f"Regime detection error: {e}")
         regime = None
