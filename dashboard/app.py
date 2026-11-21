@@ -927,55 +927,60 @@ def render_dashboard_page(params):
                 st.warning("⚠️ QuantStats not installed. Install with: `pip install quantstats`")
                 st.info("Run locally: `pip install quantstats` to enable professional tearsheets.")
             else:
-                try:
-                    if isinstance(df.index, pd.MultiIndex):
-                        sym_df = df.xs(chart_symbol, level='Symbol')
-                    else:
-                        sym_df = df
-
-                    if sym_df.empty:
-                        st.warning("No data available for tearsheet")
-                    else:
-                        # Prepare returns for QuantStats
-                        returns = sym_df['Close'].pct_change().dropna()
-
-                        if len(returns) < 2:
-                            st.warning("Insufficient data for tearsheet (need at least 2 data points)")
+                # Ensure qs is available (module-level import)
+                import quantstats as qs_check
+                if qs_check is None:
+                    st.error("QuantStats import failed")
+                else:
+                    try:
+                        if isinstance(df.index, pd.MultiIndex):
+                            sym_df = df.xs(chart_symbol, level='Symbol')
                         else:
-                            with st.spinner("Generating QuantStats tearsheet..."):
-                                st.write(f"**Data points:** {len(returns)} | **Date range:** {returns.index[0].date()} to {returns.index[-1].date()}")
+                            sym_df = df
 
-                                # Generate full HTML tearsheet
-                                html_report = qs.reports.html(
-                                    returns,
-                                    benchmark=None,
-                                    title=f'{chart_symbol} - QuantStats Tearsheet',
-                                    output=None
-                                )
+                        if sym_df.empty:
+                            st.warning("No data available for tearsheet")
+                        else:
+                            # Prepare returns for QuantStats
+                            returns = sym_df['Close'].pct_change().dropna()
 
-                                # Check if report was generated
-                                if html_report and len(html_report) > 1000:
-                                    st.components.v1.html(html_report, height=800, scrolling=True)
-                                else:
-                                    st.warning("Tearsheet generated but appears empty. Trying alternative method...")
-                                    # Fallback: use QuantStats stats directly
-                                    try:
-                                        from quantstats import stats as qs_stats
-                                        stats_df = qs_stats.stats(returns)
-                                        if stats_df is not None:
-                                            st.dataframe(stats_df.to_frame().T, width='stretch')
-                                        else:
-                                            st.warning("Could not generate stats table")
-                                    except Exception as stats_e:
-                                        st.warning(f"Stats fallback failed: {stats_e}")
-                                        # Show basic stats manually
-                                        st.write(f"**Mean Return:** {returns.mean()*100:.2f}%")
-                                        st.write(f"**Volatility (Annualized):** {returns.std()*np.sqrt(252)*100:.2f}%")
-                                        st.write(f"**Sharpe Ratio:** {returns.mean()/returns.std()*np.sqrt(252):.2f}" if returns.std() > 0 else "**Sharpe Ratio:** N/A")
+                            if len(returns) < 2:
+                                st.warning("Insufficient data for tearsheet (need at least 2 data points)")
+                            else:
+                                with st.spinner("Generating QuantStats tearsheet..."):
+                                    st.write(f"**Data points:** {len(returns)} | **Date range:** {returns.index[0].date()} to {returns.index[-1].date()}")
 
-                except Exception as e:
-                    st.error(f"Error generating tearsheet: {e}")
-                    st.info("Ensure QuantStats is installed: `pip install quantstats`")
+                                    # Generate full HTML tearsheet using module-level qs
+                                    html_report = qs.reports.html(
+                                        returns,
+                                        benchmark=None,
+                                        title=f'{chart_symbol} - QuantStats Tearsheet',
+                                        output=None
+                                    )
+
+                                    # Check if report was generated
+                                    if html_report and len(html_report) > 1000:
+                                        st.components.v1.html(html_report, height=800, scrolling=True)
+                                    else:
+                                        st.warning("Tearsheet generated but appears empty. Trying alternative method...")
+                                        # Fallback: use QuantStats stats directly
+                                        try:
+                                            from quantstats import stats as qs_stats
+                                            stats_df = qs_stats.stats(returns)
+                                            if stats_df is not None:
+                                                st.dataframe(stats_df.to_frame().T, width='stretch')
+                                            else:
+                                                st.warning("Could not generate stats table")
+                                        except Exception as stats_e:
+                                            st.warning(f"Stats fallback failed: {stats_e}")
+                                            # Show basic stats manually
+                                            st.write(f"**Mean Return:** {returns.mean()*100:.2f}%")
+                                            st.write(f"**Volatility (Annualized):** {returns.std()*np.sqrt(252)*100:.2f}%")
+                                            st.write(f"**Sharpe Ratio:** {returns.mean()/returns.std()*np.sqrt(252):.2f}" if returns.std() > 0 else "**Sharpe Ratio:** N/A")
+
+                    except Exception as e:
+                        st.error(f"Error generating tearsheet: {e}")
+                        st.info("Ensure QuantStats is installed: `pip install quantstats`")
 
 
 def render_scoring_page(params):
