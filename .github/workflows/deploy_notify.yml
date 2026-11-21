@@ -73,9 +73,10 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          BRANCH=${GITHUB_REF##*/}
+          # Use GitHub context vars instead of git commands (works with shallow checkout)
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_SHA="${{ github.sha }}"
+          BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           MESSAGE="✅ *RegimeSwing Updated & Deployed Successfully*"
@@ -107,9 +108,10 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          BRANCH=${GITHUB_REF##*/}
+          # Use GitHub context vars instead of git commands (works with shallow checkout)
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_SHA="${{ github.sha }}"
+          BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           MESSAGE="❌ *RegimeSwing Deployment Failed*"

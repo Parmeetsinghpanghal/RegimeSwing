@@ -8,25 +8,24 @@ Tracks sent alerts in logs/alerts_sent.db to avoid duplicates.
 
 import os
 import sys
-import sqlite3
-import logging
 import json
+import logging
+import sqlite3
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Dict
-from dataclasses import dataclass, asdict
+from typing import list, dict
 
 # Add project root to path
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(ROOT_DIR))
 
-import yaml
 import requests
+import yaml
 
 from data.fetcher import create_fetcher
-from indicators.technical import add_all_indicators, ensure_multiindex
 from indicators.regime import RegimeDetector
-from strategies.swing import run_all_strategies, get_all_strategies
+from indicators.technical import add_all_indicators, ensure_multiindex
 from strategies.scoring import create_scorer
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ ALERTS_DB = Path("./logs/alerts_sent.db")
 ALERTS_DB.parent.mkdir(parents=True, exist_ok=True)
 
 IST = timezone(timedelta(hours=5, minutes=30))
-UTC = timezone.utc
+UTC = datetime.UTC
 
 # Telegram config (set via environment variables or GitHub secrets)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -52,7 +51,7 @@ class AlertRecord:
     score: float
     entry_price: float
     stop_price: float
-    targets: List[float]
+    targets: list[float]
     regime: str
     message_hash: str  # For deduplication
     sent_at: str       # ISO timestamp
@@ -126,7 +125,7 @@ def record_alert(alert: AlertRecord):
             logger.warning(f"Duplicate alert skipped: {alert.symbol} {alert.date}")
 
 
-def get_recent_alerts(days: int = 7) -> List[Dict]:
+def get_recent_alerts(days: int = 7) -> list[dict]:
     """Get recently sent alerts."""
     cutoff = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
     with sqlite3.connect(ALERTS_DB) as conn:
@@ -140,7 +139,7 @@ def get_recent_alerts(days: int = 7) -> List[Dict]:
         return [dict(r) for r in rows]
 
 
-def format_telegram_message(scores, regime_info: Dict, top_n: int = 5) -> str:
+def format_telegram_message(scores, regime_info: dict, top_n: int = 5) -> str:
     """Format alerts as Telegram message (Markdown)."""
     now_ist = datetime.now(IST)
     date_str = now_ist.strftime('%d %b %Y')
@@ -206,8 +205,8 @@ def send_telegram(message: str) -> bool:
         return False
 
 
-def run_alert_cycle(config: Dict, top_n: int = 5, min_score: float = 60,
-                    require_backtest: bool = True) -> List[Dict]:
+def run_alert_cycle(config: dict, top_n: int = 5, min_score: float = 60,
+                    require_backtest: bool = True) -> list[dict]:
     """
     Run a single alert cycle: fetch data, score, filter, send alerts.
 
@@ -300,7 +299,7 @@ def run_alert_cycle(config: Dict, top_n: int = 5, min_score: float = 60,
     return []
 
 
-def load_config(config_path: str = "config.yaml") -> Dict:
+def load_config(config_path: str = "config.yaml") -> dict:
     """Load YAML config."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
