@@ -1,13 +1,13 @@
 """
 OHLCV Cache Layer - SQLite metadata + Parquet data for fast Nifty 200 scanning.
 Zero-cost, batch-friendly, rate-limit aware caching for yfinance.
-Synchronous version for Streamlit Cloud compatibility.
 """
 
 import os
 import sqlite3
 import logging
-import time
+import asyncio
+import concurrent.futures
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple, Union
@@ -70,6 +70,9 @@ class OHLCVCache:
 
         # Initialize database
         self._init_db()
+
+        # Thread pool for yfinance (blocking calls)
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     def _init_db(self):
         """Initialize SQLite database with metadata table."""
@@ -250,13 +253,18 @@ class OHLCVCache:
             group_by='ticker'
         )
 
-    def _download_with_retry(self, yf_symbol: str, period: str, interval: str) -> pd.DataFrame:
-        """Download with retry logic (synchronous)."""
+    async def _download_with_retry(self, yf_symbol: str, period: str, interval: str) -> pd.DataFrame:
+        """Download with retry logic."""
         last_exception = None
 
         for attempt in range(self.max_retries):
             try:
-                df = self._download_symbol_sync(yf_symbol, period, interval)
+                loop = asyncio.get_event_loop()
+                df = await loop.run_in_executor(
+                    self._executor,
+                    self._download_symbol_sync,
+                    yf_symbol, period, interval
+                )
 
                 if df.empty:
                     raise ValueError(f"No data returned for {yf_symbol}")
@@ -290,14 +298,14 @@ class OHLCVCache:
                 if retryable and attempt < self.max_retries - 1:
                     delay = self.delay_seconds * (2 ** attempt) + np.random.uniform(0, 0.5)
                     logger.warning(f"Retryable error for {yf_symbol} (attempt {attempt+1}): {e}. Waiting {delay:.1f}s...")
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                     continue
 
                 raise
 
         raise last_exception
 
-    def fetch_and_cache(
+    async def fetch_and_cache(
         self,
         symbols: List[str],
         period: str = "2y",
@@ -305,7 +313,7 @@ class OHLCVCache:
         progress_callback: Optional[callable] = None
     ) -> Dict[str, pd.DataFrame]:
         """
-        Fetch and cache data for multiple symbols with batching and delays (synchronous).
+        Fetch and cache data for multiple symbols with batching and delays.
 
         Args:
             symbols: List of NSE symbols
@@ -323,40 +331,57 @@ class OHLCVCache:
         for i in range(0, len(symbols), self.batch_size):
             batch = symbols[i:i + self.batch_size]
 
-            for j, symbol in enumerate(batch):
+            # Create tasks for batch
+            tasks = []
+            for symbol in batch:
                 yf_symbol = self._symbol_to_yahoo(symbol)
+                tasks.append(self._fetch_and_cache_one(symbol, yf_symbol, period, interval))
 
-                # Check cache first
-                if self.has_fresh_data(symbol, interval):
-                    cached = self.get(symbol, interval)
-                    if not cached.empty:
-                        logger.debug(f"Cache hit for {symbol} {interval}")
-                        results[symbol] = cached
-                        if progress_callback:
-                            progress_callback(i + j + 1, len(symbols), symbol)
-                        continue
+            # Run batch concurrently
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Fetch fresh data
-                try:
-                    df = self._download_with_retry(yf_symbol, period, interval)
-                    self.put(df, symbol, interval)
-                    results[symbol] = df
-                except Exception as e:
-                    logger.warning(f"Failed to fetch {symbol}: {e}")
+            for symbol, result in zip(batch, batch_results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Failed to fetch {symbol}: {result}")
                     failed.append(symbol)
                     results[symbol] = pd.DataFrame()
+                else:
+                    results[symbol] = result
 
                 if progress_callback:
-                    progress_callback(i + j + 1, len(symbols), symbol)
+                    progress_callback(i + batch.index(symbol) + 1, len(symbols), symbol)
 
             # Delay between batches to respect rate limits
             if i + self.batch_size < len(symbols):
-                time.sleep(self.delay_seconds)
+                await asyncio.sleep(self.delay_seconds)
 
         if failed:
             logger.info(f"Failed to fetch {len(failed)} symbols: {failed[:10]}...")
 
         return results
+
+    async def _fetch_and_cache_one(
+        self,
+        symbol: str,
+        yf_symbol: str,
+        period: str,
+        interval: str
+    ) -> pd.DataFrame:
+        """Fetch single symbol and cache it."""
+        # Check cache first
+        if self.has_fresh_data(symbol, interval):
+            cached = self.get(symbol, interval)
+            if not cached.empty:
+                logger.debug(f"Cache hit for {symbol} {interval}")
+                return cached
+
+        # Fetch fresh data
+        df = await self._download_with_retry(yf_symbol, period, interval)
+
+        # Cache it
+        self.put(df, symbol, interval)
+
+        return df
 
     def get_price_data(
         self,
@@ -368,65 +393,67 @@ class OHLCVCache:
         use_cache: bool = True
     ) -> pd.DataFrame:
         """
-        Get price data for symbols (synchronous interface).
+        Get price data for symbols (synchronous interface for compatibility).
 
-        Args:
-            symbols: Single symbol or list of symbols
-            start_date: Optional start date filter (YYYY-MM-DD)
-            end_date: Optional end date filter (YYYY-MM-DD)
-            period: yfinance period (e.g., "2y", "1y", "6mo")
-            interval: yfinance interval (e.g., "1d", "1h", "15m")
-            use_cache: Whether to use cached data
-
-        Returns:
-            MultiIndex DataFrame: (Symbol, Date) with OHLCV columns
+        This runs the async fetch in a new event loop.
         """
         if isinstance(symbols, str):
             symbols = [symbols]
 
-        # Try to get from cache first
-        all_data = []
-        to_fetch = []
+        # Run async fetch
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-        for symbol in symbols:
-            if use_cache and self.has_fresh_data(symbol, interval):
-                df = self.get(symbol, interval, start_date, end_date)
-                if not df.empty:
-                    df['Symbol'] = symbol
-                    all_data.append(df)
-                    continue
-            to_fetch.append(symbol)
+        try:
+            # Try to get from cache first
+            all_data = []
+            to_fetch = []
 
-        # Fetch missing symbols
-        if to_fetch:
-            fetch_results = self.fetch_and_cache(to_fetch, period, interval)
+            for symbol in symbols:
+                if use_cache and self.has_fresh_data(symbol, interval):
+                    df = self.get(symbol, interval, start_date, end_date)
+                    if not df.empty:
+                        df['Symbol'] = symbol
+                        all_data.append(df)
+                        continue
+                to_fetch.append(symbol)
 
-            for symbol, df in fetch_results.items():
-                if not df.empty:
-                    # Apply date filters
-                    if start_date:
-                        df = df[df.index >= pd.Timestamp(start_date)]
-                    if end_date:
-                        df = df[df.index <= pd.Timestamp(end_date)]
-                    df['Symbol'] = symbol
-                    all_data.append(df)
+            # Fetch missing symbols
+            if to_fetch:
+                fetch_results = loop.run_until_complete(
+                    self.fetch_and_cache(to_fetch, period, interval)
+                )
 
-        if not all_data:
-            return pd.DataFrame()
+                for symbol, df in fetch_results.items():
+                    if not df.empty:
+                        # Apply date filters
+                        if start_date:
+                            df = df[df.index >= pd.Timestamp(start_date)]
+                        if end_date:
+                            df = df[df.index <= pd.Timestamp(end_date)]
+                        df['Symbol'] = symbol
+                        all_data.append(df)
 
-        # Combine
-        combined = pd.concat(all_data)
-        combined = combined.set_index('Symbol', append=True)
-        combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-        combined = combined.sort_index()
-        return combined
+            if not all_data:
+                return pd.DataFrame()
 
-    def get_nifty_index_data(
+            # Combine
+            combined = pd.concat(all_data)
+            combined.set_index('Symbol', append=True, inplace=True)
+            combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
+            combined.sort_index(inplace=True)
+
+            return combined
+
+        finally:
+            loop.close()
+
+    async def get_nifty_index_data(
         self,
         period: str = "2y",
         interval: str = "1d"
     ) -> pd.DataFrame:
-        """Get Nifty 50 index data (^NSEI) - synchronous."""
+        """Get Nifty 50 index data (^NSEI)."""
         yf_symbol = "^NSEI"
 
         # Check cache
@@ -436,7 +463,7 @@ class OHLCVCache:
                 return cached
 
         # Fetch
-        df = self._download_with_retry(yf_symbol, period, interval)
+        df = await self._download_with_retry(yf_symbol, period, interval)
         self.put(df, "NIFTY50", interval)
         return df
 
@@ -486,8 +513,8 @@ class OHLCVCache:
         logger.info(f"Cleared {len(old_entries)} old cache entries")
 
     def close(self):
-        """Close any resources (no-op for sync version)."""
-        pass
+        """Close executor."""
+        self._executor.shutdown(wait=True)
 
 
 # Convenience function for quick access
@@ -521,10 +548,7 @@ async def fetch_nifty200_batch(
     symbols = get_nifty200_symbols()[:max_symbols]
     logger.info(f"Fetching {len(symbols)} Nifty 200 symbols...")
 
-    # Run sync version in executor for async compatibility
-    import asyncio
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, cache.fetch_and_cache, symbols, period, interval)
+    return await cache.fetch_and_cache(symbols, period, interval)
 
 
 if __name__ == "__main__":
@@ -543,7 +567,6 @@ if __name__ == "__main__":
 
     # Test batch
     print("\nTesting batch fetch...")
-    import asyncio
     async def test_batch():
         results = await cache.fetch_and_cache(["RELIANCE", "TCS", "HDFCBANK"], period="3mo", interval="1d")
         for sym, df in results.items():

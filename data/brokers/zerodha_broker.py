@@ -141,7 +141,7 @@ class ZerodhaBroker:
 
                 df = pd.DataFrame(data)
                 df['date'] = pd.to_datetime(df['date'])
-                df = df.set_index('date')
+                df.set_index('date', inplace=True)
                 df = df[['open', 'high', 'low', 'close', 'volume']]
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                 df['Symbol'] = symbol
@@ -154,9 +154,9 @@ class ZerodhaBroker:
             return pd.DataFrame()
 
         combined = pd.concat(all_data)
-        combined = combined.set_index('Symbol', append=True)
+        combined.set_index('Symbol', append=True, inplace=True)
         combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-        combined = combined.sort_index()
+        combined.sort_index(inplace=True)
         return combined
 
     def _get_instrument_token(self, symbol: str) -> Optional[int]:
@@ -260,7 +260,7 @@ class ZerodhaBroker:
 
                 df = pd.DataFrame(data)
                 df['date'] = pd.to_datetime(df['date'])
-                df = df.set_index('date')
+                df.set_index('date', inplace=True)
                 df = df[['open', 'high', 'low', 'close', 'volume']]
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                 df['Symbol'] = symbol
@@ -273,9 +273,9 @@ class ZerodhaBroker:
             return pd.DataFrame()
 
         combined = pd.concat(all_data)
-        combined = combined.set_index('Symbol', append=True)
+        combined.set_index('Symbol', append=True, inplace=True)
         combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-        combined = combined.sort_index()
+        combined.sort_index(inplace=True)
         return combined
 
     def _get_instrument_token(self, symbol: str) -> Optional[int]:

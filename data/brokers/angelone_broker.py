@@ -142,7 +142,7 @@ class AngelOneBroker:
 
                 df = pd.DataFrame(data['data'], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df = df.set_index('timestamp')
+                df.set_index('timestamp', inplace=True)
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                 df['Symbol'] = symbol
                 all_data.append(df)
@@ -156,9 +156,9 @@ class AngelOneBroker:
             return pd.DataFrame()
 
         combined = pd.concat(all_data)
-        combined = combined.set_index('Symbol', append=True)
+        combined.set_index('Symbol', append=True, inplace=True)
         combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-        combined = combined.sort_index()
+        combined.sort_index(inplace=True)
         return combined
 
     def _get_token(self, symbol: str) -> Optional[str]:
@@ -257,7 +257,7 @@ class AngelOneBroker:
 
                 df = pd.DataFrame(data['data'], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df = df.set_index('timestamp')
+                df.set_index('timestamp', inplace=True)
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                 df['Symbol'] = symbol
                 all_data.append(df)
@@ -269,9 +269,9 @@ class AngelOneBroker:
             return pd.DataFrame()
 
         combined = pd.concat(all_data)
-        combined = combined.set_index('Symbol', append=True)
+        combined.set_index('Symbol', append=True, inplace=True)
         combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-        combined = combined.sort_index()
+        combined.sort_index(inplace=True)
         return combined
 
     async def get_option_chain(self, symbol: str, expiry: Optional[str] = None) -> pd.DataFrame:

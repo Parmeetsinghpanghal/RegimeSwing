@@ -4,13 +4,6 @@ Upgraded with TradingView-style charts, Sensibull-style options payoff, and mult
 Cloud-compatible version for Streamlit Cloud deployment.
 """
 
-# Add project root to path at the VERY TOP - before any other imports
-import sys
-from pathlib import Path
-ROOT_DIR = Path(__file__).parent.parent.absolute()
-sys.path.insert(0, str(ROOT_DIR))
-
-# Now import other modules
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -24,21 +17,19 @@ import sys
 import os
 import logging
 
-# QuantStats for tear-sheets (optional)
-try:
-    import quantstats as qs
-    QUANTSTATS_AVAILABLE = True
-except ImportError:
-    QUANTSTATS_AVAILABLE = False
-    qs = None
-
-# Import SwingScore type for type hints
-try:
-    from strategies.scoring import SwingScore
-except ImportError:
-    SwingScore = None
-
 logger = logging.getLogger(__name__)
+
+# Add project root to path - works both locally and on Streamlit Cloud
+ROOT_DIR = Path(__file__).parent.parent.absolute()
+sys.path.insert(0, str(ROOT_DIR))
+
+# Import after path setup
+from data.fetcher import create_fetcher, DataFetcher
+from indicators.technical import add_all_indicators, ensure_multiindex
+from indicators.regime import RegimeDetector
+from indicators.targets import TargetCalculator
+from strategies.swing import run_all_strategies, get_all_strategies
+from strategies.scoring import create_scorer, score_and_rank, SwingScore
 
 st.set_page_config(
     page_title="Swing Toolkit Dashboard",
@@ -644,7 +635,7 @@ def render_dashboard_page(params):
         if cloud_mode:
             st.caption("☁️ Running on Streamlit Cloud (Demo Mode)")
     with col2:
-        if st.button("🔄 Refresh Data", width='stretch'):
+        if st.button("🔄 Refresh Data", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
     with col3:
@@ -680,7 +671,7 @@ def render_dashboard_page(params):
                 elif col_str == 'adj close':
                     col_mapping[col] = 'Adj Close'
             if col_mapping:
-                nifty_df = nifty_df.rename(columns=col_mapping)
+                nifty_df.rename(columns=col_mapping, inplace=True)
             nifty_df.index = pd.to_datetime(nifty_df.index)
 
             required = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -741,12 +732,8 @@ def render_dashboard_page(params):
             should_opt, reason_opt, opt_params = detector.should_sell_options(regime)
             icon = "✅" if should_opt else "❌"
             st.write(f"{icon} Options Selling: {reason_opt}")
-            if should_opt and opt_params:
-                with st.expander("📋 Options Parameters"):
-                    col1, col2 = st.columns(2)
-                    for i, (k, v) in enumerate(opt_params.items()):
-                        with col1 if i % 2 == 0 else col2:
-                            st.metric(k.replace('_', ' ').title(), v)
+            if should_opt:
+                st.json(opt_params)
     except Exception as e:
         st.warning(f"Regime detection error: {e}")
         regime = None
@@ -758,13 +745,11 @@ def render_dashboard_page(params):
     # ===== MULTI-FACTOR SCORING =====
     st.subheader("🎯 Multi-Factor Swing Scores")
 
-    # Pass regime object for scorer (needs dict with regime string and regime_obj for strategies)
     regime_info = {
         'regime': regime.regime,
         'confidence': regime.confidence,
         'size_mult': detector.get_size_multiplier(regime),
-        'nifty_trend': regime.nifty_trend,
-        'regime_obj': regime  # Pass actual RegimeState object for strategies
+        'nifty_trend': regime.nifty_trend
     }
 
     with st.spinner("Scoring universe..."):
@@ -807,7 +792,7 @@ def render_dashboard_page(params):
                 return ['background-color: #fff8e1'] * len(row)
             return ['background-color: #fbe9e7'] * len(row)
 
-        st.dataframe(score_df.style.apply(highlight_score, axis=1), width='stretch')
+        st.dataframe(score_df.style.apply(highlight_score, axis=1), use_container_width=True)
 
         # Download
         csv = score_df.to_csv(index=False)
@@ -839,20 +824,13 @@ def render_dashboard_page(params):
                 }
                 break
 
-        # Try to get actual signal from strategy - pass regime object and wrapper functions
-        def should_trade_swing_wrapper(r, strategy):
-            return detector.should_trade_swing(regime, strategy)
-
-        def should_sell_options_wrapper(r):
-            return detector.should_sell_options(regime)
-
+        # Try to get actual signal from strategy
         regime_info_full = {
             'regime': regime.regime,
-            'regime_obj': regime,  # Pass actual RegimeState object
             'size_mult': detector.get_size_multiplier(regime),
             'nifty_trend': regime.nifty_trend,
-            'should_trade_swing': should_trade_swing_wrapper,
-            'should_sell_options': should_sell_options_wrapper
+            'should_trade_swing': detector.should_trade_swing,
+            'should_sell_options': detector.should_sell_options
         }
         all_signals = run_all_strategies(df, config, regime_info_full)
         for sig in all_signals:
@@ -866,7 +844,7 @@ def render_dashboard_page(params):
                 }
                 break
 
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 TradingView Chart", "📈 Options Payoff", "📋 Signal Details", "📊 QuantStats Tearsheet"])
+        tab1, tab2, tab3 = st.tabs(["📊 TradingView Chart", "📈 Options Payoff", "📋 Signal Details"])
 
         with tab1:
             col1, col2 = st.columns([3, 1])
@@ -875,12 +853,12 @@ def render_dashboard_page(params):
                 chart_height = st.slider("Chart Height", 500, 1200, 800)
             with st.spinner(f"Loading chart for {chart_symbol}..."):
                 fig = create_tradingview_chart(df, chart_symbol, signal, height=chart_height)
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, use_container_width=True)
 
         with tab2:
             if signal:
                 fig = create_options_payoff_chart(signal, config)
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No signal available for options payoff")
 
@@ -895,43 +873,6 @@ def render_dashboard_page(params):
                 })
             else:
                 st.info("No signal details available")
-
-        with tab4:
-            st.subheader("📊 QuantStats Tearsheet")
-            if not QUANTSTATS_AVAILABLE:
-                st.warning("⚠️ QuantStats not installed. Install with: `pip install quantstats`")
-                st.info("Run locally: `pip install quantstats` to enable professional tearsheets.")
-            else:
-                try:
-                    if isinstance(df.index, pd.MultiIndex):
-                        sym_df = df.xs(chart_symbol, level='Symbol')
-                    else:
-                        sym_df = df
-
-                    if sym_df.empty:
-                        st.warning("No data available for tearsheet")
-                    else:
-                        # Prepare returns for QuantStats
-                        returns = sym_df['Close'].pct_change().dropna()
-
-                        if len(returns) < 2:
-                            st.warning("Insufficient data for tearsheet (need at least 2 data points)")
-                        else:
-                            with st.spinner("Generating QuantStats tearsheet..."):
-                                # Generate HTML tearsheet
-                                html_report = qs.reports.html(
-                                    returns,
-                                    benchmark=None,  # Could add Nifty as benchmark
-                                    title=f'{chart_symbol} - QuantStats Tearsheet',
-                                    output=None  # Return as string
-                                )
-
-                                # Display in Streamlit
-                                st.components.v1.html(html_report, height=800, scrolling=True)
-
-                except Exception as e:
-                    st.error(f"Error generating tearsheet: {e}")
-                    st.info("Ensure QuantStats is installed: `pip install quantstats`")
 
 
 def render_scoring_page(params):
@@ -1021,7 +962,7 @@ def render_scoring_page(params):
                     'Win Rate': f"{s.backtest_metrics.get('win_rate', 0):.1%}" if s.backtest_metrics else "N/A",
                     'Expectancy': f"{s.backtest_metrics.get('expectancy', 0):.2f}R" if s.backtest_metrics else "N/A"
                 })
-            st.dataframe(pd.DataFrame(score_data), width='stretch')
+            st.dataframe(pd.DataFrame(score_data), use_container_width=True)
 
 
 def render_backtest_page(params):
@@ -1107,7 +1048,7 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
                 elif col_str == 'adj close':
                     col_mapping[col] = 'Adj Close'
             if col_mapping:
-                nifty_df = nifty_df.rename(columns=col_mapping)
+                nifty_df.rename(columns=col_mapping, inplace=True)
             nifty_df.index = pd.to_datetime(nifty_df.index)
 
             required = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -1175,7 +1116,7 @@ def run_signal_generation(config, symbols, strategy, start_date, end_date):
             })
 
         sig_df = pd.DataFrame(sig_data)
-        st.dataframe(sig_df, width='stretch')
+        st.dataframe(sig_df, use_container_width=True)
 
         csv = sig_df.to_csv(index=False)
         st.download_button(
@@ -1247,7 +1188,7 @@ def render_paper_trading_page(params):
                 'Stop': f"₹{pos.get('stop_price', 0):.2f}",
                 'Strategy': pos.get('strategy', 'unknown')
             })
-        st.dataframe(pd.DataFrame(pos_data), width='stretch')
+        st.dataframe(pd.DataFrame(pos_data), use_container_width=True)
 
     if st.button("🔄 Run Daily Cycle", type="primary"):
         with st.spinner("Running daily cycle..."):
@@ -1316,7 +1257,7 @@ def render_paper_trading_page(params):
     if st.session_state.get('paper_trades_log'):
         with st.expander("📜 Trade History"):
             trades_df = pd.DataFrame(st.session_state.paper_trades_log)
-            st.dataframe(trades_df, width='stretch')
+            st.dataframe(trades_df, use_container_width=True)
 
 
 def render_scanner_page(params):
@@ -1358,7 +1299,7 @@ def render_scanner_page(params):
                         results.append({'Symbol': symbol, 'Error': str(e)})
 
                 res_df = pd.DataFrame(results)
-                st.dataframe(res_df, width='stretch')
+                st.dataframe(res_df, use_container_width=True)
             except Exception as e:
                 st.error(f"Scan failed: {e}")
 
@@ -1389,7 +1330,7 @@ def render_regime_page(params):
                 elif col_str == 'adj close':
                     col_mapping[col] = 'Adj Close'
             if col_mapping:
-                nifty_df = nifty_df.rename(columns=col_mapping)
+                nifty_df.rename(columns=col_mapping, inplace=True)
             nifty_df.index = pd.to_datetime(nifty_df.index)
 
             required = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -1435,7 +1376,7 @@ def render_regime_page(params):
                 fig = go.Figure(data=[go.Pie(labels=regime_counts.index, values=regime_counts.values,
                                              marker_colors=['#4caf50', '#f44336', '#ff9800', '#9c27b0'])])
                 fig.update_layout(title="Regime Distribution (Historical)")
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, use_container_width=True)
 
             with col2:
                 fig = go.Figure()
@@ -1450,7 +1391,7 @@ def render_regime_page(params):
                         marker=dict(color=regime_colors.get(regime, 'gray'), size=8)
                     ))
                 fig.update_layout(title="Regime Timeline", yaxis_title="Regime", showlegend=False)
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, use_container_width=True)
 
             st.subheader("Current Regime Details")
             latest_regime = detector.detect_nifty_regime(nifty_df)
@@ -1466,7 +1407,7 @@ def render_regime_page(params):
                     'Trade?': '✅' if should else '❌',
                     'Reason': reason
                 })
-            st.dataframe(pd.DataFrame(strat_data), width='stretch')
+            st.dataframe(pd.DataFrame(strat_data), use_container_width=True)
 
     except Exception as e:
         st.error(f"Regime analysis error: {e}")

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from indicators.technical import ensure_multiindex, get_symbol_data
 from indicators.regime import RegimeDetector
-from backtest import BacktestConfig, WalkForwardBacktester, run_backtest
+from backtest.engine import BacktestConfig, WalkForwardBacktester, run_backtest
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class MultiFactorScorer:
     6. Regime Alignment (10%) - Regime compatibility with strategy
     """
 
-    # Default weights (sum = 1.0)
+    # Default factor weights (sum = 1.0)
     DEFAULT_WEIGHTS = {
         'trend_alignment': 0.25,
         'momentum': 0.20,
@@ -95,7 +95,7 @@ class MultiFactorScorer:
     MIN_WIN_RATE = 0.55      # 55%
     MIN_EXPECTANCY = 0.3     # 0.3R
     MIN_PROFIT_FACTOR = 1.0
-    MIN_TRADES = 10
+    MIN_TRADES = 10          # Minimum trades for statistical significance
 
     def __init__(self, config: Dict = None):
         self.config = config or {}
@@ -201,7 +201,7 @@ class MultiFactorScorer:
         )
 
     def _score_trend_alignment(self, latest: pd.Series, sym_df: pd.DataFrame) -> FactorScore:
-        """Score trend alignment: EMA alignment, ADX strength."""
+        """Score trend alignment: EMA stack + ADX."""
         close = latest['Close']
         ema20 = latest.get('EMA_20', close)
         ema50 = latest.get('EMA_50', close)
@@ -209,8 +209,9 @@ class MultiFactorScorer:
         adx = latest.get('ADX_14', 0)
 
         # EMA alignment score (0-100)
+        ema_score = 0
         if close > ema50 > ema200:
-            ema_score = 100  # Perfect bullish alignment
+            ema_score = 100  # Perfect bullish stack
         elif close > ema50 and ema50 > ema200 * 0.98:
             ema_score = 75   # Good alignment
         elif close > ema200:
@@ -448,7 +449,7 @@ class MultiFactorScorer:
         return passed, metrics
 
     def _check_gate(self, metrics: Dict) -> bool:
-        """Check if backtest metrics pass the gate."""
+        """Check if backtest metrics pass the validation gate."""
         if not metrics:
             return False
 
@@ -467,15 +468,17 @@ class MultiFactorScorer:
     def _run_quick_backtest(self, symbol: str, strategy: str) -> Dict:
         """
         Run quick backtest for validation.
-        In production, this calls the full backtest engine.
-        For now, returns mock metrics based on symbol characteristics.
+        In production, this calls the full walk-forward backtest engine.
         """
-        # Use deterministic hash of symbol for consistent mock results
+        # For demo, return simulated metrics based on symbol characteristics
+        # In reality, this would call backtest.engine.run_backtest()
+
+        # Use a deterministic hash of symbol for consistent demo results
         import hashlib
         seed = int(hashlib.md5(f"{symbol}_{strategy}".encode()).hexdigest()[:8], 16)
         np.random.seed(seed)
 
-        # Simulate realistic metrics based on symbol characteristics
+        # Simulate realistic metrics
         base_wr = 0.45 + np.random.random() * 0.30  # 45-75%
         base_exp = -0.1 + np.random.random() * 0.8   # -0.1 to 0.7
 
@@ -516,7 +519,7 @@ class MultiFactorScorer:
 
         Args:
             df: MultiIndex DataFrame with all symbols and indicators
-            regime_info: Current regime info from RegimeDetector
+            regime_info: Current regime info
             strategy: Strategy to score for
             min_score: Minimum total score (0-100)
 
@@ -571,10 +574,10 @@ def score_and_rank(
     config: Dict = None,
     top_n: int = 5
 ) -> List[SwingScore]:
-    """Quick function to score and rank universe."""
+    """Quick function to score universe and get top picks."""
     scorer = create_scorer(config)
     scores = scorer.score_universe(df, regime_info, strategy)
-    return scorer.get_top_picks(scores, top_n=5, require_backtest=True)
+    return scorer.get_top_picks(scores, top_n=top_n, require_backtest=True)
 
 
 if __name__ == "__main__":
@@ -623,7 +626,7 @@ if __name__ == "__main__":
     scores = scorer.score_universe(combined, regime_info, 'trend_pullback')
 
     print(f"\nTop 5 Scores:")
-    for s in sorted(scorer.get_top_picks(scorer.score_universe(combined, regime_info)), key=lambda x: x.total_score, reverse=True)[:5]:
-        print(f"  {s.symbol}: {s.total_score:.1f} | Regime: {s.regime} | Backtest: {'✅' if s.backtest_passed else '❌'}")
+    for s in scores[:5]:
+        print(f"  {s.symbol}: {s.total_score:.1f} | Regime: {s.regime} | Backtest: {'✓' if s.backtest_passed else '✗'}")
         for f in s.factor_scores:
-            print(f"  {f.name}: {f.score:.0f} (w={f.weight}) - {f.description}")
+            print(f"    {f.name}: {f.score:.1f} (w={f.weight}) - {f.description}")

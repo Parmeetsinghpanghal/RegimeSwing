@@ -112,7 +112,7 @@ class DhanBroker:
                     if data.get('status') == 'success' and data.get('data'):
                         df = pd.DataFrame(data['data'])
                         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
-                        df = df.set_index('timestamp')
+                        df.set_index('timestamp', inplace=True)
                         df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
                         df['Symbol'] = symbol
                         return df

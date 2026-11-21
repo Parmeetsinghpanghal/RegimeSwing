@@ -140,7 +140,7 @@ class YFinanceBroker:
                         col_mapping[col] = 'Adj Close'
 
                 if col_mapping:
-                    df = df.rename(columns=col_mapping)
+                    df.rename(columns=col_mapping, inplace=True)
 
                 df.index = pd.to_datetime(df.index)
 
@@ -191,9 +191,9 @@ class YFinanceBroker:
 
         # Combine all symbols
         combined = pd.concat(all_data)
-        combined = combined.set_index('Symbol', append=True)
+        combined.set_index('Symbol', append=True, inplace=True)
         combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-        combined = combined.sort_index()
+        combined.sort_index(inplace=True)
         return combined
 
     def _download_symbol_sync(self, yf_symbol: str, period: str, interval: str) -> pd.DataFrame:

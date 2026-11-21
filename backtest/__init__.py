@@ -2,19 +2,29 @@
 Backtesting module for the trading system.
 """
 from .engine import (
-    BacktestConfig,
-    Trade,
+    BacktestEngine,
+    create_backtest_engine,
+    run_simple_backtest,
     BacktestResult,
-    CostModel,
-    WalkForwardBacktester,
-    run_backtest,
+    Trade,
+    MetricsCalculator,
+    SlippageModel,
+    OptionsPricer,
+    WalkForwardAnalyzer,
+    MonteCarloSimulator,
+    example_strategy,
 )
 
 __all__ = [
-    'BacktestConfig',
-    'Trade',
+    'BacktestEngine',
+    'create_backtest_engine',
+    'run_simple_backtest',
     'BacktestResult',
-    'CostModel',
-    'WalkForwardBacktester',
-    'run_backtest',
+    'Trade',
+    'MetricsCalculator',
+    'SlippageModel',
+    'OptionsPricer',
+    'WalkForwardAnalyzer',
+    'MonteCarloSimulator',
+    'example_strategy',
 ]

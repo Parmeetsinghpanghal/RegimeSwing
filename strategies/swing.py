@@ -160,27 +160,7 @@ class TrendPullbackStrategy(BaseSwingStrategy):
 
                 # Regime filter
                 if regime_info:
-                    # Use regime_obj if available (actual RegimeState), else fallback to regime_info dict
-                    regime_obj = regime_info.get('regime_obj', regime_info)
-
-                    # Handle both RegimeState object and dict
-                    if hasattr(regime_obj, 'regime'):
-                        # It's a RegimeState object
-                        regime_for_check = regime_obj
-                    elif isinstance(regime_obj, dict) and 'regime' in regime_obj:
-                        # It's a dict with 'regime' key
-                        class RegimeProxy:
-                            def __init__(self, d):
-                                self.regime = d['regime']
-                        regime_for_check = RegimeProxy(regime_obj)
-                    else:
-                        # Fallback: assume bullish
-                        class RegimeProxy:
-                            def __init__(self):
-                                self.regime = 'bull'
-                        regime_for_check = RegimeProxy()
-
-                    should, _ = regime_info.get('should_trade_swing', lambda r, s: (True, ""))(regime_for_check, 'trend_pullback')
+                    should, _ = regime_info.get('should_trade_swing', lambda r, s: (True, ""))(regime_info, 'trend_pullback')
                     if not should:
                         continue
 

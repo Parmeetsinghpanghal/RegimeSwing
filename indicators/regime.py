@@ -27,30 +27,23 @@ class RegimeState:
     ema_alignment: str         # 'bullish', 'bearish', 'mixed'
     breadth: float             # % stocks above EMA50
     timestamp: pd.Timestamp
-    fii_dii_signal: Optional[str] = None  # 'bullish', 'bearish', 'neutral'
-    fii_dii_net_cr: float = 0.0  # Net FII+DII flow in crores
 
 
 class RegimeDetector:
     """
-    Detect market regime using Nifty 50, breadth indicators, and FII/DII flows.
+    Detect market regime using Nifty 50 and breadth indicators.
     """
 
-    def __init__(self, config: dict, fii_dii_provider=None):
+    def __init__(self, config: dict):
         self.config = config
         self.regime_config = config.get('regime', {})
         self.indicators_config = config.get('indicators', {})
-        self.fii_dii_provider = fii_dii_provider  # Optional FII/DII data provider
 
         # Thresholds
         self.vix_high = self.regime_config.get('volatile_conditions', {}).get('vix_threshold', 22)
         self.atr_pct_high = self.regime_config.get('volatile_conditions', {}).get('atr_pct_threshold', 0.02)
         self.adx_trend = self.regime_config.get('bull_conditions', {}).get('adx_min', 20)
         self.ema_tolerance = self.regime_config.get('sideways_conditions', {}).get('ema_tolerance', 0.03)
-
-        # FII/DII thresholds
-        self.fii_dii_bullish_threshold = self.regime_config.get('fii_dii_bullish_threshold', 500)  # Cr
-        self.fii_dii_bearish_threshold = self.regime_config.get('fii_dii_bearish_threshold', -500)  # Cr
 
         # Size multipliers by regime
         self.size_mult = self.regime_config.get('size_multiplier', {
@@ -83,49 +76,18 @@ class RegimeDetector:
             )
 
         latest = nifty_df.iloc[-1]
+        close = latest['Close']
 
-        # Helper to safely extract numeric values (handle tuples/arrays from yfinance/pandas)
-        def _as_float(val, default=0.0):
-            """Convert value to float, handling tuples/lists/arrays from yfinance/pandas."""
-            if val is None:
-                return default
-            # Handle numpy arrays, pandas Series, tuples, lists
-            if hasattr(val, '__len__') and not isinstance(val, (str, bytes)):
-                try:
-                    # Get first element if it's a sequence
-                    val = val[0] if len(val) > 0 else default
-                except (TypeError, IndexError):
-                    pass
-            try:
-                return float(val)
-            except (ValueError, TypeError):
-                return default
-
-        # Helper to ensure we get scalar values
-        def _scalar(val, default=0.0):
-            """Ensure we get a scalar float value."""
-            val = _as_float(val, default)
-            # Extra safety: if somehow still not scalar, return default
-            # Check for numpy types too
-            if not isinstance(val, (int, float, np.number, np.integer, np.floating)):
-                return default
-            return val
-
-        close = _scalar(latest.get('Close'))
-        if close <= 0:
-            close = _scalar(latest.get('Adj Close', 10000.0))
-
-        # Get indicators with safe extraction
-        ema20 = _scalar(latest.get('EMA_20'), close)
-        ema50 = _scalar(latest.get('EMA_50'), close)
-        ema200 = _scalar(latest.get('EMA_200'), close)
-        adx = _scalar(latest.get('ADX_14'), 0)
-        atr = _scalar(latest.get('ATR_14'), 0)
+        # Get indicators
+        ema20 = latest.get('EMA_20', close)
+        ema50 = latest.get('EMA_50', close)
+        ema200 = latest.get('EMA_200', close)
+        adx = latest.get('ADX_14', 0)
+        atr = latest.get('ATR_14', 0)
         atr_pct = atr / close if close > 0 else 0
 
-        # VIX (if available, else estimate from ATR) - handle tuple from yfinance
-        vix_raw = latest.get('VIX', atr_pct * 100 * np.sqrt(252))
-        vix = _scalar(vix_raw)
+        # VIX (if available, else estimate from ATR)
+        vix = latest.get('VIX', atr_pct * 100 * np.sqrt(252))
 
         # EMA alignment
         ema_alignment = 'mixed'
@@ -179,27 +141,6 @@ class RegimeDetector:
         if adx > 30:
             scores['volatile'] += 0.5
 
-        # FII/DII Flow scoring (if provider available)
-        if self.fii_dii_provider:
-            try:
-                fii_dii_signal = self.fii_dii_provider.get_fii_dii_signal()
-                if fii_dii_signal:
-                    signal = fii_dii_signal.get('signal', 'neutral')
-                    net_cr = fii_dii_signal.get('net_cr', 0)
-                    if signal == 'bullish':
-                        if net_cr > 1000:
-                            scores['bull'] += 0.3
-                        else:
-                            scores['bull'] += 0.2
-                    elif signal == 'bearish':
-                        if net_cr < -1000:
-                            scores['bear'] += 0.3
-                        else:
-                            scores['bear'] += 0.2
-                    logger.info(f"FII/DII Signal: {signal} (Net: ₹{net_cr:.0f} Cr)")
-            except Exception as e:
-                logger.warning(f"FII/DII signal error: {e}")
-
         # Determine regime
         regime = max(scores, key=scores.get)
         confidence = scores[regime]
@@ -212,18 +153,6 @@ class RegimeDetector:
         # Breadth (simplified - would need all stocks data)
         breadth = 0.5  # Placeholder
 
-        # Get FII/DII data for regime state
-        fii_dii_signal = None
-        fii_dii_net_cr = 0.0
-        if self.fii_dii_provider:
-            try:
-                fii_dii_data = self.fii_dii_provider.get_fii_dii_signal()
-                if fii_dii_data:
-                    fii_dii_signal = fii_dii_data.get('signal', 'neutral')
-                    fii_dii_net_cr = fii_dii_data.get('net_cr', 0.0)
-            except Exception:
-                pass
-
         return RegimeState(
             regime=regime,
             confidence=confidence,
@@ -232,9 +161,7 @@ class RegimeDetector:
             adx_value=adx,
             ema_alignment=ema_alignment,
             breadth=breadth,
-            timestamp=pd.Timestamp.now(),
-            fii_dii_signal=fii_dii_signal,
-            fii_dii_net_cr=fii_dii_net_cr
+            timestamp=pd.Timestamp.now()
         )
 
     def detect_sector_regime(self, sector_df: pd.DataFrame, nifty_df: pd.DataFrame) -> Dict[str, str]:

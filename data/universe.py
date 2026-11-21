@@ -1,7 +1,6 @@
 """
-Dynamic Nifty 200 Constituent Fetcher
-Fetches current Nifty 200 constituents from NSE with local caching.
-Zero-cost, zero-rate-limit using NSE public APIs.
+Dynamic Nifty 200 Constituent Fetcher - Zero-cost universe management.
+Fetches from NSE official sources with local caching and static fallback.
 """
 
 import os
@@ -89,7 +88,7 @@ def _get_cache_path(index_name: str) -> Path:
     return CACHE_DIR / f"{index_name}_constituents.json"
 
 
-def _is_cache_fresh(cache_path: Path, max_age_hours: int = 24) -> bool:
+def _is_cache_fresh(cache_path: Path, max_age_hours: int = CACHE_TTL_HOURS) -> bool:
     """Check if cache file exists and is fresh."""
     if not cache_path.exists():
         return False
@@ -142,10 +141,13 @@ def _fetch_nse_csv(url: str, timeout: int = 10) -> Optional[pd.DataFrame]:
 
 def _extract_symbols(df: pd.DataFrame) -> List[str]:
     """Extract symbol column from NSE CSV."""
+    # NSE CSVs typically have 'Symbol' or 'SYMBOL' column
     symbol_cols = [c for c in df.columns if c.lower() in ('symbol', 'tradingsymbol')]
     if not symbol_cols:
+        # Try first column
         symbol_cols = [df.columns[0]]
     symbols = df[symbol_cols[0]].dropna().astype(str).str.strip().str.upper().tolist()
+    # Clean up: remove any non-alphanumeric except & and -
     symbols = [s.replace(' ', '').replace('.', '') for s in symbols if s]
     return symbols
 
@@ -153,10 +155,16 @@ def _extract_symbols(df: pd.DataFrame) -> List[str]:
 def fetch_nifty200_constituents(force_refresh: bool = False) -> List[str]:
     """
     Fetch Nifty 200 constituents from NSE with caching.
-    Returns list of symbols without .NS suffix.
+
+    Args:
+        force_refresh: Bypass cache and fetch fresh
+
+    Returns:
+        List of symbols (without .NS suffix)
     """
     cache_path = _get_cache_path("nifty200")
 
+    # Try cache first
     if not force_refresh and _is_cache_fresh(cache_path):
         cached = _load_from_cache(cache_path)
         if cached:
@@ -195,6 +203,7 @@ def fetch_nifty50_constituents(force_refresh: bool = False) -> List[str]:
             _save_to_cache(cache_path, symbols)
             return symbols
 
+    # Fallback: first 50 from Nifty 200
     nifty200 = fetch_nifty200_constituents(force_refresh)
     fallback = nifty200[:50]
     _save_to_cache(cache_path, fallback)
@@ -217,6 +226,7 @@ def fetch_nifty100_constituents(force_refresh: bool = False) -> List[str]:
             _save_to_cache(cache_path, symbols)
             return symbols
 
+    # Fallback: first 100 from Nifty 200
     nifty200 = fetch_nifty200_constituents(force_refresh)
     fallback = nifty200[:100]
     _save_to_cache(cache_path, fallback)
@@ -239,6 +249,7 @@ def fetch_nifty_next50_constituents(force_refresh: bool = False) -> List[str]:
             _save_to_cache(cache_path, symbols)
             return symbols
 
+    # Fallback: symbols 50-100 from Nifty 200
     nifty200 = fetch_nifty200_constituents(force_refresh)
     fallback = nifty200[50:100]
     _save_to_cache(cache_path, fallback)
@@ -246,37 +257,58 @@ def fetch_nifty_next50_constituents(force_refresh: bool = False) -> List[str]:
 
 
 def get_nifty200_symbols(force_refresh: bool = False) -> List[str]:
+    """Get Nifty 200 symbols (alias for fetch_nifty200_constituents)."""
     return fetch_nifty200_constituents(force_refresh)
 
 
 def get_nifty50_symbols(force_refresh: bool = False) -> List[str]:
+    """Get Nifty 50 symbols."""
     return fetch_nifty50_constituents(force_refresh)
 
 
 def get_nifty100_symbols(force_refresh: bool = False) -> List[str]:
+    """Get Nifty 100 symbols."""
     return fetch_nifty100_constituents(force_refresh)
 
 
 def get_nifty_next50_symbols(force_refresh: bool = False) -> List[str]:
+    """Get Nifty Next 50 symbols."""
     return fetch_nifty_next50_constituents(force_refresh)
 
 
 def get_universe(universe: str, force_refresh: bool = False) -> List[str]:
+    """
+    Get symbols for a universe.
+
+    Args:
+        universe: 'nifty50', 'nifty100', 'nifty200', 'niftynext50', or comma-separated symbols
+        force_refresh: Bypass cache
+
+    Returns:
+        List of symbols
+    """
     universe = universe.lower().strip()
+
     if universe == 'nifty50':
-        return fetch_nifty50_constituents(force_refresh)
+        return get_nifty50_symbols(force_refresh)
     elif universe == 'nifty100':
-        return get_nifty100_symbols()
+        return get_nifty100_symbols(force_refresh)
     elif universe == 'nifty200':
-        return get_nifty200_symbols()
+        return get_nifty200_symbols(force_refresh)
     elif universe == 'niftynext50':
-        return fetch_nifty_next50_constituents()
+        return get_nifty_next50_symbols(force_refresh)
     else:
+        # Custom comma-separated list
         return [s.strip().upper() for s in universe.split(',') if s.strip()]
 
 
 def get_all_symbols() -> List[str]:
+    """Get all available symbols (Nifty 200)."""
     return get_nifty200_symbols()
+
+
+# Pre-fetch and cache on import (optional, comment out if not wanted)
+# fetch_nifty200_constituents()
 
 
 if __name__ == "__main__":
@@ -295,11 +327,11 @@ if __name__ == "__main__":
     print(f"Nifty 50: {len(nifty50)} symbols")
 
     # Test Nifty 100
-    nifty100 = get_nifty100_symbols()
+    nifty100 = fetch_nifty100_constituents()
     print(f"Nifty 100: {len(nifty100)} symbols")
 
     # Test Nifty Next 50
-    niftynext50 = get_nifty_next50_symbols()
+    niftynext50 = fetch_nifty_next50_constituents()
     print(f"Nifty Next 50: {len(niftynext50)} symbols")
 
     # Test custom
