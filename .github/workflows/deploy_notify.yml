@@ -62,14 +62,14 @@ except Exception as e:
           COMMIT_SHA="${{ github.sha }}"
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          python3 -c "
+          cat > /tmp/escape.py << 'EOF'
 import sys
 msg = sys.argv[1]
 for ch in '_*[]()~`>#+-=|{}.!':
     msg = msg.replace(ch, '\\' + ch)
 print(msg)
-" "$COMMIT_MSG" > /tmp/escaped.txt
-          ESCAPED_MSG=$(cat /tmp/escaped.txt)
+EOF
+          ESCAPED_MSG=$(python3 /tmp/escape.py "$COMMIT_MSG")
           MESSAGE="✅ *RegimeSwing Updated & Deployed Successfully*"
           MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
           MESSAGE+="\n🌿 *Branch*: $BRANCH"
