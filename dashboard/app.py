@@ -757,12 +757,13 @@ def render_dashboard_page(params):
     # ===== MULTI-FACTOR SCORING =====
     st.subheader("🎯 Multi-Factor Swing Scores")
 
-    # Pass regime object for scorer (needs dict with regime string)
+    # Pass regime object for scorer (needs dict with regime string and regime_obj for strategies)
     regime_info = {
         'regime': regime.regime,
         'confidence': regime.confidence,
         'size_mult': detector.get_size_multiplier(regime),
-        'nifty_trend': regime.nifty_trend
+        'nifty_trend': regime.nifty_trend,
+        'regime_obj': regime  # Pass actual RegimeState object for strategies
     }
 
     with st.spinner("Scoring universe..."):
