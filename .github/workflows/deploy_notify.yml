@@ -54,10 +54,10 @@ jobs:
               from strategies.scoring import create_scorer
               from backtest import WalkForwardBacktester, BacktestConfig
               from papertrade import PaperTradingEngine
-              print('✅ All imports successful')
+              print('All imports successful')
           except Exception as e:
               import traceback
-              print(f'❌ Import failed: {e}')
+              print(f'Import failed: {e}')
               traceback.print_exc()
           " || true
         continue-on-error: true
@@ -79,7 +79,7 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Write Python escape script to file, then execute
+          # Escape MarkdownV2 special characters using Python script file
           cat > /tmp/escape_md.py << 'PYEOF'
 import sys
 msg = sys.argv[1]
@@ -106,7 +106,7 @@ PYEOF
 
       - name: Log success
         run: |
-          echo "✅ Deployment notification sent to Telegram"
+          echo "Deployment notification sent to Telegram"
 
   notify-failure:
     needs: test
@@ -152,4 +152,4 @@ print(msg)
 
       - name: Log failure
         run: |
-          echo "❌ Deployment failure notification sent to Telegram"
+          echo "Deployment failure notification sent to Telegram"
