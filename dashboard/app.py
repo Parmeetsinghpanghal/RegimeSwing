@@ -834,20 +834,7 @@ def render_dashboard_page(params):
     if scores:
         chart_symbol = st.selectbox("Select Symbol for Detailed View", [s.symbol for s in scores], index=0)
 
-        # Find signal for this symbol
-        signal = None
-        for s in scores:
-            if s.symbol == chart_symbol:
-                signal = {
-                    'entry_price': s.factor_scores[0].metadata.get('ema20', 0) if s.factor_scores else 0,
-                    'stop_price': s.factor_scores[0].metadata.get('chandelier', 0) if s.factor_scores else 0,
-                    'targets': [],
-                    'timestamp': s.timestamp,
-                    'symbol': s.symbol
-                }
-                break
-
-        # Try to get actual signal from strategy
+        # Find signal for this symbol - first try from actual strategy signals
         regime_info_full = {
             'regime': regime.regime,
             'regime_obj': regime,  # Pass the actual RegimeState object
@@ -857,6 +844,9 @@ def render_dashboard_page(params):
             'should_sell_options': detector.should_sell_options
         }
         all_signals = run_all_strategies(df, config, regime_info_full)
+
+        signal = None
+        # First try to find signal from actual strategy
         for sig in all_signals:
             if sig.symbol == chart_symbol:
                 signal = {
@@ -867,6 +857,19 @@ def render_dashboard_page(params):
                     'symbol': sig.symbol
                 }
                 break
+
+        # If no strategy signal found, create from score data (fallback)
+        if signal is None:
+            for s in scores:
+                if s.symbol == chart_symbol:
+                    signal = {
+                        'entry_price': s.factor_scores[0].metadata.get('ema20', 0) if s.factor_scores else 0,
+                        'stop_price': s.factor_scores[0].metadata.get('chandelier', 0) if s.factor_scores else 0,
+                        'targets': [],
+                        'timestamp': s.timestamp,
+                        'symbol': s.symbol
+                    }
+                    break
 
         tab1, tab2, tab3, tab4 = st.tabs(["📊 TradingView Chart", "📈 Options Payoff", "📋 Signal Details", "📊 QuantStats Tearsheet"])
 
@@ -888,13 +891,25 @@ def render_dashboard_page(params):
 
         with tab3:
             if signal:
-                st.json({
-                    'symbol': signal['symbol'],
-                    'entry': signal['entry_price'],
-                    'stop_loss': signal['stop_price'],
-                    'targets': signal['targets'],
-                    'risk_reward': [(t - signal['entry_price']) / (signal['entry_price'] - signal['stop_price']) for t in signal['targets']] if signal['stop_price'] < signal['entry_price'] else []
-                })
+                has_real_signal = len(signal.get('targets', [])) > 0 and signal.get('stop_price', 0) > 0
+                if has_real_signal:
+                    st.json({
+                        'symbol': signal['symbol'],
+                        'entry': signal['entry_price'],
+                        'stop_loss': signal['stop_price'],
+                        'targets': signal['targets'],
+                        'risk_reward': [(t - signal['entry_price']) / (signal['entry_price'] - signal['stop_price']) for t in signal['targets']] if signal['stop_price'] < signal['entry_price'] else []
+                    })
+                else:
+                    st.warning(f"⚠️ **No active signal for {signal['symbol']}**")
+                    st.info("""
+                    The symbol scored well but doesn't meet the entry criteria for any active strategy:
+                    - Trend Pullback: Requires trend (Price > EMA50 > EMA200, ADX > 25) + pullback to EMA20 + RSI 40-55
+                    - Breakout Volume: Requires consolidation + volume breakout
+                    - Mean Reversion BB: Requires price at lower BB + RSI < 30 + low ADX
+
+                    Try adjusting the scoring threshold or check again later.
+                    """)
             else:
                 st.info("No signal details available")
 
