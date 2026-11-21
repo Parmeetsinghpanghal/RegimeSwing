@@ -19,6 +19,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# QuantStats for tear-sheets (optional)
+try:
+    import quantstats as qs
+    QUANTSTATS_AVAILABLE = True
+except ImportError:
+    QUANTSTATS_AVAILABLE = False
+    qs = None
+
 # Add project root to path - works both locally and on Streamlit Cloud
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(ROOT_DIR))
