@@ -17,7 +17,7 @@ from pathlib import Path
 
 from indicators.technical import ensure_multiindex, get_symbol_data
 from indicators.regime import RegimeDetector
-from backtest.engine import BacktestConfig, WalkForwardBacktester, run_backtest
+from backtest import BacktestConfig, WalkForwardBacktester, run_backtest
 
 logger = logging.getLogger(__name__)
 

@@ -160,7 +160,9 @@ class TrendPullbackStrategy(BaseSwingStrategy):
 
                 # Regime filter
                 if regime_info:
-                    should, _ = regime_info.get('should_trade_swing', lambda r, s: (True, ""))(regime_info, 'trend_pullback')
+                    # Use regime_obj if available (actual RegimeState), else fallback to regime_info dict
+                    regime_obj = regime_info.get('regime_obj', regime_info)
+                    should, _ = regime_info.get('should_trade_swing', lambda r, s: (True, ""))(regime_obj, 'trend_pullback')
                     if not should:
                         continue
 
