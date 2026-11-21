@@ -76,18 +76,33 @@ class RegimeDetector:
             )
 
         latest = nifty_df.iloc[-1]
-        close = latest['Close']
 
-        # Get indicators
-        ema20 = latest.get('EMA_20', close)
-        ema50 = latest.get('EMA_50', close)
-        ema200 = latest.get('EMA_200', close)
-        adx = latest.get('ADX_14', 0)
-        atr = latest.get('ATR_14', 0)
+        # Helper to safely extract numeric values (handle tuples from yfinance)
+        def _as_float(val, default=0.0):
+            """Convert value to float, handling tuples/lists from yfinance."""
+            if val is None:
+                return default
+            if isinstance(val, (tuple, list)):
+                return float(val[0]) if val else default
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
+        close = _as_float(latest.get('Close'))
+        if close <= 0:
+            close = _as_float(latest.get('Adj Close', 10000.0))
+
+        # Get indicators with safe extraction
+        ema20 = _as_float(latest.get('EMA_20'), close)
+        ema50 = _as_float(latest.get('EMA_50'), close)
+        ema200 = _as_float(latest.get('EMA_200'), close)
+        adx = _as_float(latest.get('ADX_14'), 0)
+        atr = _as_float(latest.get('ATR_14'), 0)
         atr_pct = atr / close if close > 0 else 0
 
         # VIX (if available, else estimate from ATR)
-        vix = latest.get('VIX', atr_pct * 100 * np.sqrt(252))
+        vix = _as_float(latest.get('VIX', atr_pct * 100 * np.sqrt(252)))
 
         # EMA alignment
         ema_alignment = 'mixed'
