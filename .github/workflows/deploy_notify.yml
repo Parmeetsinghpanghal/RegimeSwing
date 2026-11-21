@@ -79,14 +79,14 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Escape MarkdownV2 special characters
-          ESCAPED_MSG=$(python3 -c "
-import sys, re
+          # Escape MarkdownV2 special characters using Python script
+          ESCAPED_MSG=$(python3 - <<'PYEOF'
+import sys
 msg = sys.argv[1]
-# Escape MarkdownV2 special chars
 for ch in r'_*[]()~`>#+-=|{}.!':
     msg = msg.replace(ch, '\\' + ch)
 print(msg)
+PYEOF
 " "$COMMIT_MSG")
 
           MESSAGE="✅ *RegimeSwing Updated & Deployed Successfully*"
@@ -124,14 +124,14 @@ print(msg)
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Escape MarkdownV2 special characters
-          ESCAPED_MSG=$(python3 -c "
-import sys, re
+          # Escape MarkdownV2 special characters using Python
+          ESCAPED_MSG=$(python3 - <<'PYEOF'
+import sys
 msg = sys.argv[1]
-# Escape MarkdownV2 special chars
 for ch in r'_*[]()~`>#+-=|{}.!':
-    msg = msg.replace(ch, '\\\\' + ch)
+    msg = msg.replace(ch, '\\' + ch)
 print(msg)
+PYEOF
 " "$COMMIT_MSG")
 
           MESSAGE="❌ *RegimeSwing Deployment Failed*"
