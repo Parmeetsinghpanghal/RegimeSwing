@@ -943,16 +943,25 @@ def render_dashboard_page(params):
                             st.warning("Insufficient data for tearsheet (need at least 2 data points)")
                         else:
                             with st.spinner("Generating QuantStats tearsheet..."):
-                                # Generate HTML tearsheet
+                                # Try to generate simple stats first
+                                st.write(f"**Data points:** {len(returns)} | **Date range:** {returns.index[0].date()} to {returns.index[-1].date()}")
+
+                                # Generate full HTML tearsheet
                                 html_report = qs.reports.html(
                                     returns,
-                                    benchmark=None,  # Could add Nifty as benchmark
+                                    benchmark=None,
                                     title=f'{chart_symbol} - QuantStats Tearsheet',
-                                    output=None  # Return as string
+                                    output=None
                                 )
 
-                                # Display in Streamlit
-                                st.components.v1.html(html_report, height=800, scrolling=True)
+                                # Check if report was generated
+                                if html_report and len(html_report) > 1000:
+                                    st.components.v1.html(html_report, height=800, scrolling=True)
+                                else:
+                                    st.warning("Tearsheet generated but appears empty. Trying alternative method...")
+                                    # Fallback: use st.write with QuantStats stats
+                                    stats = qs.stats(returns)
+                                    st.dataframe(stats.to_frame().T, width='stretch')
 
                 except Exception as e:
                     st.error(f"Error generating tearsheet: {e}")
