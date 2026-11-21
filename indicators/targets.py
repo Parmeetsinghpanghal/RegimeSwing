@@ -407,6 +407,66 @@ def calculate_option_position_size(
     return max(contracts, 0)
 
 
+def calculate_position_size_atr_parity(
+    capital: float,
+    risk_per_trade: float,
+    entry_price: float,
+    stop_price: float,
+    atr_pct: float,
+    target_atr_pct: float = 0.02,
+    max_position_pct: float = 0.05,
+    lot_size: int = 1
+) -> int:
+    """
+    Calculate position size with ATR Volatility Parity.
+
+    Ensures a 1-ATR move in any stock causes the same rupee P&L impact.
+    High-volatility stocks get smaller positions, low-volatility get larger.
+
+    Args:
+        capital: Total capital
+        risk_per_trade: Base risk per trade (e.g., 0.015 = 1.5%)
+        entry_price: Entry price
+        stop_price: Stop loss price
+        atr_pct: Current stock's ATR% (ATR/Price)
+        target_atr_pct: Target ATR% for parity (default 2% = typical Nifty 50 stock)
+        max_position_pct: Maximum position as % of capital
+        lot_size: Minimum lot size
+
+    Returns:
+        Number of shares/contracts (rounded to lot size)
+    """
+    if atr_pct <= 0:
+        atr_pct = target_atr_pct
+
+    # ATR multiplier: scale position so 1 ATR move = same rupee impact
+    # If stock has 3% ATR and target is 2%, multiplier = 2/3 = 0.67
+    # If stock has 1% ATR and target is 2%, multiplier = 2/1 = 2.0
+    atr_multiplier = target_atr_pct / max(atr_pct, 0.005)
+
+    # Base position size using standard risk calculation
+    base_size = calculate_position_size(
+        capital=capital,
+        risk_per_trade=risk_per_trade,
+        entry_price=entry_price,
+        stop_price=stop_price,
+        max_position_pct=max_position_pct,
+        lot_size=lot_size
+    )
+
+    # Apply ATR parity multiplier
+    parity_size = int(base_size * atr_multiplier)
+
+    # Cap at max position %
+    max_shares = int((capital * max_position_pct) / entry_price)
+    parity_size = min(parity_size, max_shares)
+
+    # Round to lot size
+    parity_size = int(parity_size / lot_size) * lot_size
+
+    return max(parity_size, 0)
+
+
 # ============================================================
 # RISK/REWARD ANALYSIS
 # ============================================================

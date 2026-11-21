@@ -24,6 +24,7 @@ from .targets import (
     StopTarget,
     calculate_position_size,
     calculate_option_position_size,
+    calculate_position_size_atr_parity,
     analyze_risk_reward
 )
 
