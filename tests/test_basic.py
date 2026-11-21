@@ -110,7 +110,7 @@ def test_regime_detector():
 
 
 def test_swing_strategies():
-    """Test swing strategies generate signals."""
+    """Test swing strategies generate signals (or run without error)."""
     from indicators.technical import add_all_indicators, ensure_multiindex
     from indicators.regime import RegimeDetector
     from strategies.swing import run_all_strategies, get_all_strategies
@@ -163,6 +163,7 @@ def test_swing_strategies():
     signals = run_all_strategies(combined, config, regime_info)
     # Just verify it runs - signals may be empty due to random data
     assert isinstance(signals, list)
+    assert True  # Pass if no exception
 
 
 def test_scorer():
