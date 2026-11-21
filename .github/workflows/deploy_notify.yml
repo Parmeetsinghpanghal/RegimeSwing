@@ -79,10 +79,13 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
+          # Escape HTML special characters in commit message
+          ESCAPED_MSG=$(echo "$COMMIT_MSG" | sed 's/&/\&/g; s/</\</g; s/>/\>/g; s/"/\"/g; s/'"'"'/\'/g')
+
           MESSAGE="✅ <b>RegimeSwing Updated & Deployed Successfully</b>"
           MESSAGE+="\n\n📦 <b>Repo</b>: ${{ github.repository }}"
           MESSAGE+="\n🌿 <b>Branch</b>: $BRANCH"
-          MESSAGE+="\n📝 <b>Commit</b>: $COMMIT_MSG"
+          MESSAGE+="\n📝 <b>Commit</b>: $ESCAPED_MSG"
           MESSAGE+="\n🔖 <b>SHA</b>: $COMMIT_SHA"
           MESSAGE+="\n🔗 <b>Workflow</b>: $WORKFLOW_URL"
           MESSAGE+="\n⏱ <b>Time</b>: $(date -u '+%Y-%m-%d %H:%M UTC')"
@@ -114,10 +117,13 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
+          # Escape HTML special characters in commit message
+          ESCAPED_MSG=$(echo "$COMMIT_MSG" | sed 's/&/\&/g; s/</\</g; s/>/\>/g; s/"/\"/g; s/'"'"'/\'/g')
+
           MESSAGE="❌ <b>RegimeSwing Deployment Failed</b>"
           MESSAGE+="\n\n📦 <b>Repo</b>: ${{ github.repository }}"
           MESSAGE+="\n🌿 <b>Branch</b>: $BRANCH"
-          MESSAGE+="\n📝 <b>Commit</b>: $COMMIT_MSG"
+          MESSAGE+="\n📝 <b>Commit</b>: $ESCAPED_MSG"
           MESSAGE+="\n🔖 <b>SHA</b>: $COMMIT_SHA"
           MESSAGE+="\n🔗 <b>Workflow</b>: $WORKFLOW_URL"
           MESSAGE+="\n⏱ <b>Time</b>: $(date -u '+%Y-%m-%d %H:%M UTC')"
