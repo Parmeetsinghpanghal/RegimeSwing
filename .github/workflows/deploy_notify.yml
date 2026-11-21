@@ -79,18 +79,18 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          MESSAGE="✅ *RegimeSwing Updated & Deployed Successfully*"
-          MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
-          MESSAGE+="\n🌿 *Branch*: $BRANCH"
-          MESSAGE+="\n📝 *Commit*: $COMMIT_MSG"
-          MESSAGE+="\n🔖 *SHA*: $COMMIT_SHA"
-          MESSAGE+="\n🔗 *Workflow*: $WORKFLOW_URL"
-          MESSAGE+="\n⏱ *Time*: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          MESSAGE="✅ <b>RegimeSwing Updated & Deployed Successfully</b>"
+          MESSAGE+="\n\n📦 <b>Repo</b>: ${{ github.repository }}"
+          MESSAGE+="\n🌿 <b>Branch</b>: $BRANCH"
+          MESSAGE+="\n📝 <b>Commit</b>: $COMMIT_MSG"
+          MESSAGE+="\n🔖 <b>SHA</b>: $COMMIT_SHA"
+          MESSAGE+="\n🔗 <b>Workflow</b>: $WORKFLOW_URL"
+          MESSAGE+="\n⏱ <b>Time</b>: $(date -u '+%Y-%m-%d %H:%M UTC')"
 
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
             -d chat_id="$TELEGRAM_CHAT_ID" \
             -d text="$MESSAGE" \
-            -d parse_mode="Markdown" \
+            -d parse_mode="HTML" \
             -d disable_web_page_preview=true
 
       - name: Log success
@@ -114,19 +114,19 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          MESSAGE="❌ *RegimeSwing Deployment Failed*"
-          MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
-          MESSAGE+="\n🌿 *Branch*: $BRANCH"
-          MESSAGE+="\n📝 *Commit*: $COMMIT_MSG"
-          MESSAGE+="\n🔖 *SHA*: $COMMIT_SHA"
-          MESSAGE+="\n🔗 *Workflow*: $WORKFLOW_URL"
-          MESSAGE+="\n⏱ *Time*: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          MESSAGE+="\n\n_Check GitHub Actions for details_"
+          MESSAGE="❌ <b>RegimeSwing Deployment Failed</b>"
+          MESSAGE+="\n\n📦 <b>Repo</b>: ${{ github.repository }}"
+          MESSAGE+="\n🌿 <b>Branch</b>: $BRANCH"
+          MESSAGE+="\n📝 <b>Commit</b>: $COMMIT_MSG"
+          MESSAGE+="\n🔖 <b>SHA</b>: $COMMIT_SHA"
+          MESSAGE+="\n🔗 <b>Workflow</b>: $WORKFLOW_URL"
+          MESSAGE+="\n⏱ <b>Time</b>: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          MESSAGE+="\n\n<i>Check GitHub Actions for details</i>"
 
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
             -d chat_id="$TELEGRAM_CHAT_ID" \
             -d text="$MESSAGE" \
-            -d parse_mode="Markdown" \
+            -d parse_mode="HTML" \
             -d disable_web_page_preview=true
 
       - name: Log failure
