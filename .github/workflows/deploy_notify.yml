@@ -54,43 +54,43 @@ except Exception as e:
     steps:
       - name: Send Telegram Success
         if: env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const commitMsg = '${{ github.event.head_commit.message }}';
-            const commitSha = '${{ github.sha }}';
-            const branch = '${{ github.ref_name }}';
-            const workflowUrl = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}';
-
-            // Escape MarkdownV2 special characters
-            const escapeMd = (msg) => {
-              return msg.replace(/[_*[\]()~`>#+-=|{}.!]/g, ch => '\\' + ch);
-            };
-
-            const escapedMsg = escapeMd(process.env.COMMIT_MSG);
-            const message = `✅ *RegimeSwing Updated & Deployed Successfully*\n\n📦 *Repo*: ${{ github.repository }}\n🌿 *Branch*: ${branch}\n📝 *Commit*: ${escapedMsg}\n🔖 *SHA*: ${process.env.COMMIT_SHA}\n🔗 *Workflow*: ${process.env.WORKFLOW_URL}\n⏱ *Time*: ${new Date().toISOString().replace('T', ' ').replace('Z', ' UTC')}`;
-
-            const token = process.env.TELEGRAM_BOT_TOKEN;
-            const chatId = process.env.TELEGRAM_CHAT_ID;
-            const url = `https://api.telegram.org/bot${token}/sendMessage`;
-
-            await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'MarkdownV2',
-                disable_web_page_preview: true
-              })
-            });
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          COMMIT_SHA: ${{ github.sha }}
-          BRANCH: ${{ github.ref_name }}
-          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_SHA="${{ github.sha }}"
+          BRANCH="${{ github.ref_name }}"
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Write Python escape script
+          cat > /tmp/escape_md.py << 'PYEOF'
+import sys
+msg = sys.argv[1]
+for ch in r"_*[]()~`>#+-=|{}.!":
+    msg = msg.replace(ch, "\\" + ch)
+print(msg)
+EOF
+
+          ESCAPED_MSG=$(python3 /tmp/escape_md.py "$COMMIT_MSG")
+
+          MESSAGE="✅ *RegimeSwing Updated & Deployed Successfully*"
+          MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
+          MESSAGE+="\n🌿 *Branch*: $BRANCH"
+          MESSAGE+="\n📝 *Commit*: $ESCAPED_MSG"
+          MESSAGE+="\n🔖 *SHA*: $COMMIT_SHA"
+          MESSAGE+="\n🔗 *Workflow*: $WORKFLOW_URL"
+          MESSAGE+="\n⏱ *Time*: $(date -u '+%Y-%m-%d %H:%M UTC')"
+
+          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d text="$MESSAGE" \
+            -d parse_mode="MarkdownV2" \
+            -d disable_web_page_preview=true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
 
   notify-failure:
     needs: test
@@ -98,44 +98,37 @@ except Exception as e:
     runs-on: ubuntu-latest
     steps:
       - name: Send Telegram Failure
-        uses: actions/github-script@v7
         if: env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        with:
-          script: |
-            const commitMsg = '${{ github.event.head_commit.message }}';
-            const commitSha = '${{ github.sha }}';
-            const branch = '${{ github.ref_name }}';
-            const workflowUrl = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}';
-
-            // Escape MarkdownV2 special characters
-            const escapeMd = (msg) => {
-              return msg.replace(/[_*[\]()~`>#+-=|{}.!]/g, ch => '\\' + ch);
-            };
-
-            const escapedMsg = escapeMd(process.env.COMMIT_MSG);
-            const message = `❌ *RegimeSwing Deployment Failed*\n\n📦 *Repo*: ${{ github.repository }}\n🌿 *Branch*: ${branch}\n📝 *Commit*: ${process.env.COMMIT_MSG}\n🔖 *SHA*: ${process.env.COMMIT_SHA}\n🔗 *Workflow*: ${process.env.WORKFLOW_URL}\n⏱ *Time*: ${new Date().toISOString().replace('T', ' ').replace('Z', ' UTC')}\n\n*Check GitHub Actions for details*`;
-
-            const token = process.env.TELEGRAM_BOT_TOKEN;
-            const chatId = process.env.TELEGRAM_CHAT_ID;
-            const url = `https://api.telegram.org/bot${token}/sendMessage`;
-
-            await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'MarkdownV2',
-                disable_web_page_preview: true
-              })
-            });
+        run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_SHA="${{ github.sha }}"
+          BRANCH="${{ github.ref_name }}"
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          python3 -c "
+import sys
+msg = sys.argv[1]
+for ch in r'_*[]()~`>#+-=|{}.!':
+    msg = msg.replace(ch, '\\\\' + ch)
+print(msg)
+" "$COMMIT_MSG" > /tmp/escaped.txt
+          ESCAPED_MSG=$(cat /tmp/escaped.txt)
+          MESSAGE="❌ *RegimeSwing Deployment Failed*"
+          MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
+          MESSAGE+="\n🌿 *Branch*: $BRANCH"
+          MESSAGE+="\n📝 *Commit*: $ESCAPED_MSG"
+          MESSAGE+="\n🔖 *SHA*: $COMMIT_SHA"
+          MESSAGE+="\n🔗 *Workflow*: $WORKFLOW_URL"
+          MESSAGE+="\n⏱ *Time*: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          MESSAGE+="\n\n*Check GitHub Actions for details*"
+          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d text="$MESSAGE" \
+            -d parse_mode="MarkdownV2" \
+            -d disable_web_page_preview=true
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          COMMIT_SHA: ${{ github.sha }}
-          BRANCH: ${{ github.ref_name }}
-          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
