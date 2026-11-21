@@ -77,32 +77,47 @@ class RegimeDetector:
 
         latest = nifty_df.iloc[-1]
 
-        # Helper to safely extract numeric values (handle tuples from yfinance)
+        # Helper to safely extract numeric values (handle tuples/arrays from yfinance/pandas)
         def _as_float(val, default=0.0):
-            """Convert value to float, handling tuples/lists from yfinance."""
+            """Convert value to float, handling tuples/lists/arrays from yfinance/pandas."""
             if val is None:
                 return default
-            if isinstance(val, (tuple, list)):
-                return float(val[0]) if val else default
+            # Handle numpy arrays, pandas Series, tuples, lists
+            if hasattr(val, '__len__') and not isinstance(val, (str, bytes)):
+                try:
+                    # Get first element if it's a sequence
+                    val = val[0] if len(val) > 0 else default
+                except (TypeError, IndexError):
+                    pass
             try:
                 return float(val)
             except (ValueError, TypeError):
                 return default
 
-        close = _as_float(latest.get('Close'))
+        # Helper to ensure we get scalar values
+        def _scalar(val, default=0.0):
+            """Ensure we get a scalar float value."""
+            val = _as_float(val, default)
+            # Extra safety: if somehow still not scalar, return default
+            if not isinstance(val, (int, float, np.number)):
+                return default
+            return val
+
+        close = _scalar(latest.get('Close'))
         if close <= 0:
-            close = _as_float(latest.get('Adj Close', 10000.0))
+            close = _scalar(latest.get('Adj Close', 10000.0))
 
         # Get indicators with safe extraction
-        ema20 = _as_float(latest.get('EMA_20'), close)
-        ema50 = _as_float(latest.get('EMA_50'), close)
-        ema200 = _as_float(latest.get('EMA_200'), close)
-        adx = _as_float(latest.get('ADX_14'), 0)
-        atr = _as_float(latest.get('ATR_14'), 0)
+        ema20 = _scalar(latest.get('EMA_20'), close)
+        ema50 = _scalar(latest.get('EMA_50'), close)
+        ema200 = _scalar(latest.get('EMA_200'), close)
+        adx = _scalar(latest.get('ADX_14'), 0)
+        atr = _scalar(latest.get('ATR_14'), 0)
         atr_pct = atr / close if close > 0 else 0
 
-        # VIX (if available, else estimate from ATR)
-        vix = _as_float(latest.get('VIX', atr_pct * 100 * np.sqrt(252)))
+        # VIX (if available, else estimate from ATR) - handle tuple from yfinance
+        vix_raw = latest.get('VIX', atr_pct * 100 * np.sqrt(252))
+        vix = _scalar(vix_raw)
 
         # EMA alignment
         ema_alignment = 'mixed'
