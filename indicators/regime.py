@@ -106,7 +106,8 @@ class RegimeDetector:
             """Ensure we get a scalar float value."""
             val = _as_float(val, default)
             # Extra safety: if somehow still not scalar, return default
-            if not isinstance(val, (int, float, np.number)):
+            # Check for numpy types too
+            if not isinstance(val, (int, float, np.number, np.integer, np.floating)):
                 return default
             return val
 
