@@ -10,11 +10,10 @@ import os
 import sys
 import sqlite3
 import logging
-import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 from dataclasses import dataclass, asdict
 
 # Add project root to path
@@ -22,8 +21,6 @@ ROOT_DIR = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(ROOT_DIR))
 
 import yaml
-import pandas as pd
-import numpy as np
 import requests
 
 from data.fetcher import create_fetcher
