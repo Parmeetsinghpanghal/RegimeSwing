@@ -27,6 +27,13 @@ from .targets import (
     calculate_position_size_atr_parity,
     analyze_risk_reward
 )
+from .position_sizer import (
+    CapitalTieredPositionSizer,
+    PositionSizingResult,
+    CapitalTier,
+    CapitalTierConfig,
+    create_position_sizer
+)
 
 from .regime import (
     RegimeDetector,
@@ -94,7 +101,11 @@ __all__ = [
 
     # Targets
     'TargetCalculator', 'StopMethod', 'TargetMethod', 'StopTarget',
-    'calculate_position_size', 'calculate_option_position_size', 'analyze_risk_reward',
+    'calculate_position_size', 'calculate_option_position_size', 'calculate_position_size_atr_parity', 'analyze_risk_reward',
+
+    # Position Sizer
+    'CapitalTieredPositionSizer', 'PositionSizingResult',
+    'CapitalTier', 'CapitalTierConfig', 'create_position_sizer',
 
     # Regime
     'RegimeDetector', 'RegimeState',
