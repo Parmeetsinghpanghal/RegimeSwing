@@ -79,8 +79,8 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Escape HTML special characters in commit message
-          ESCAPED_MSG=$(echo "$COMMIT_MSG" | sed 's/&/\&/g; s/</\</g; s/>/\>/g; s/"/\"/g; s/'"'"'/\'/g')
+          # Escape HTML special characters in commit message using Python
+          ESCAPED_MSG=$(python3 -c "import html, sys; print(html.escape(sys.argv[1]))" "$COMMIT_MSG")
 
           MESSAGE="✅ <b>RegimeSwing Updated & Deployed Successfully</b>"
           MESSAGE+="\n\n📦 <b>Repo</b>: ${{ github.repository }}"
@@ -117,8 +117,8 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Escape HTML special characters in commit message
-          ESCAPED_MSG=$(echo "$COMMIT_MSG" | sed 's/&/\&/g; s/</\</g; s/>/\>/g; s/"/\"/g; s/'"'"'/\'/g')
+          # Escape HTML special characters in commit message using Python
+          ESCAPED_MSG=$(python3 -c "import html, sys; print(html.escape(sys.argv[1]))" "$COMMIT_MSG")
 
           MESSAGE="❌ <b>RegimeSwing Deployment Failed</b>"
           MESSAGE+="\n\n📦 <b>Repo</b>: ${{ github.repository }}"
