@@ -978,6 +978,16 @@ def render_dashboard_page(params):
                                             st.write(f"**Volatility (Annualized):** {returns.std()*np.sqrt(252)*100:.2f}%")
                                             st.write(f"**Sharpe Ratio:** {returns.mean()/returns.std()*np.sqrt(252):.2f}" if returns.std() > 0 else "**Sharpe Ratio:** N/A")
 
+                                            # Try individual QuantStats functions
+                                            try:
+                                                from quantstats.stats import sharpe, volatility, cagr, max_drawdown
+                                                st.write(f"**CAGR:** {cagr(returns)*100:.2f}%")
+                                                st.write(f"**Max Drawdown:** {max_drawdown(returns)*100:.2f}%")
+                                                st.write(f"**Sharpe (QS):** {sharpe(returns):.2f}")
+                                                st.write(f"**Volatility (QS):** {volatility(returns)*100:.2f}%")
+                                            except Exception as qs_e:
+                                                st.write(f"_Individual QS functions also failed: {qs_e}_")
+
                     except Exception as e:
                         st.error(f"Error generating tearsheet: {e}")
                         st.info("Ensure QuantStats is installed: `pip install quantstats`")
