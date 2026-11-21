@@ -69,6 +69,17 @@ st.markdown("""
         background-color: #00cc88;
         color: white;
     }
+    /* Force dark text in dataframes for both light and dark themes */
+    .stDataFrame, .stDataFrame * {
+        color: #111 !important;
+    }
+    .stDataFrame td, .stDataFrame th {
+        color: #111 !important;
+        background-color: #fff !important;
+    }
+    /* Scorecard dark text */
+    .scorecard-symbol { color: #111 !important; }
+    .scorecard-text { color: #333 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -549,7 +560,7 @@ def create_scorecard(score: SwingScore):
     return f"""
     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <h3 style="margin: 0;">{score.symbol}</h3>
+            <h3 style="margin: 0; color: #111;">{score.symbol}</h3>
             <span class="{score_class}">{total:.1f}/100</span>
         </div>
         <div style="display: flex; gap: 16px; font-size: 0.9em; color: #666;">
