@@ -158,10 +158,15 @@ class DataFetcher:
         # Create broker
         self.broker = BrokerFactory.create(broker_config_obj)
 
-        # Initialize broker
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.broker.initialize())
+        # Initialize broker synchronously
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.broker.initialize())
+            loop.close()
+        except Exception as e:
+            logger.warning(f"Broker initialization failed: {e}")
 
         # Universe symbols - use new dynamic fetcher
         self.nifty200_symbols = get_nifty200_symbols()
@@ -200,47 +205,79 @@ class DataFetcher:
             )
 
         # For other brokers, use broker directly
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        df = loop.run_until_complete(self.broker.get_price_data(
-            symbols=symbols,
-            start_date=start_date,
-            end_date=end_date,
-            period=period,
-            interval=interval,
-            use_cache=use_cache
-        ))
-        return df
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            df = loop.run_until_complete(self.broker.get_price_data(
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                period=period,
+                interval=interval,
+                use_cache=use_cache
+            ))
+            loop.close()
+            return df
+        except Exception as e:
+            logger.error(f"Broker get_price_data failed: {e}")
+            return pd.DataFrame()
 
     def get_option_chain(self, symbol: str, expiry: Optional[str] = None) -> pd.DataFrame:
         """Get option chain for symbol."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(self.broker.get_option_chain(symbol, expiry))
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            df = loop.run_until_complete(self.broker.get_option_chain(symbol, expiry))
+            loop.close()
+            return df
+        except Exception as e:
+            logger.error(f"Broker get_option_chain failed: {e}")
+            return pd.DataFrame()
 
     def get_fundamentals(self, symbols: List[str]) -> pd.DataFrame:
         """Get fundamental data."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(self.broker.get_fundamentals(symbols))
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            df = loop.run_until_complete(self.broker.get_fundamentals(symbols))
+            loop.close()
+            return df
+        except Exception as e:
+            logger.error(f"Broker get_fundamentals failed: {e}")
+            return pd.DataFrame()
 
     def get_nifty_index_data(self, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
         """Get Nifty 50 index data for regime detection."""
-        # Use cache for yfinance
+        # Use cache for yfinance (synchronous now)
         if self.broker.config.broker_type == BrokerType.YFINANCE:
+            return self.cache.get_nifty_index_data(period, interval)
+
+        try:
+            import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            return loop.run_until_complete(self.cache.get_nifty_index_data(period, interval))
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(self.broker.get_nifty_index_data(period, interval))
+            df = loop.run_until_complete(self.broker.get_nifty_index_data(period, interval))
+            loop.close()
+            return df
+        except Exception as e:
+            logger.error(f"Broker get_nifty_index_data failed: {e}")
+            return pd.DataFrame()
 
     def health_check(self) -> Dict:
         """Check data pipeline health."""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(self.broker.health_check())
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(self.broker.health_check())
+            loop.close()
+            return result
+        except Exception as e:
+            logger.error(f"Broker health_check failed: {e}")
+            return {'status': 'error', 'message': str(e)}
 
     def get_universe(self, universe: str = "nifty200") -> List[str]:
         """Get symbols for a universe."""
