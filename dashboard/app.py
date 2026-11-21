@@ -537,6 +537,15 @@ def create_scorecard(score: SwingScore):
         score_class = "score-low"
         score_label = "AVOID"
 
+    def factor_color(val):
+        """Return color based on factor score."""
+        if val >= 75:
+            return "#00cc88"  # green
+        elif val >= 50:
+            return "#ffaa00"  # yellow/orange
+        else:
+            return "#ff4444"  # red
+
     return f"""
     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background: #fafafa;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -549,7 +558,7 @@ def create_scorecard(score: SwingScore):
             <span>{score_label}</span>
         </div>
         <div style="margin-top: 12px;">
-            {''.join([f'<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;"><span>{f.name.replace("_"," ").title()}</span><span><strong>{f.score:.0f}</strong> (w={f.weight:.0%})</span></div>' for f in score.factor_scores])}
+            {''.join([f'<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;"><span>{f.name.replace("_"," ").title()}</span><span style="color:{factor_color(f.score)}; font-weight:600;">{f.score:.0f}</span><span style="color:#999; font-size:0.85em;"> (w={f.weight:.0%})</span></div>' for f in score.factor_scores])}
         </div>
     </div>
     """
