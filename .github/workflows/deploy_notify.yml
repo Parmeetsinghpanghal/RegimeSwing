@@ -79,15 +79,16 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Escape MarkdownV2 special characters using Python script
-          ESCAPED_MSG=$(python3 - <<'PYEOF'
+          # Write Python escape script to file, then execute
+          cat > /tmp/escape_md.py << 'PYEOF'
 import sys
 msg = sys.argv[1]
 for ch in r'_*[]()~`>#+-=|{}.!':
     msg = msg.replace(ch, '\\' + ch)
 print(msg)
 PYEOF
-" "$COMMIT_MSG")
+
+          ESCAPED_MSG=$(python3 /tmp/escape_md.py "$COMMIT_MSG")
 
           MESSAGE="✅ *RegimeSwing Updated & Deployed Successfully*"
           MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
@@ -124,15 +125,15 @@ PYEOF
           BRANCH="${{ github.ref_name }}"
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Escape MarkdownV2 special characters using Python
-          ESCAPED_MSG=$(python3 - <<'PYEOF'
+          # Escape MarkdownV2 special characters using temp Python file
+          python3 -c "
 import sys
 msg = sys.argv[1]
 for ch in r'_*[]()~`>#+-=|{}.!':
-    msg = msg.replace(ch, '\\' + ch)
+    msg = msg.replace(ch, '\\\\' + ch)
 print(msg)
-PYEOF
-" "$COMMIT_MSG")
+" "$COMMIT_MSG" > /tmp/escaped_msg.txt
+          ESCAPED_MSG=$(cat /tmp/escaped_msg.txt)
 
           MESSAGE="❌ *RegimeSwing Deployment Failed*"
           MESSAGE+="\n\n📦 *Repo*: ${{ github.repository }}"
