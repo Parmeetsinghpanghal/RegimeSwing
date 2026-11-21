@@ -960,11 +960,8 @@ def render_dashboard_page(params):
                                     st.warning("Tearsheet generated but appears empty. Trying alternative method...")
                                     # Fallback: use QuantStats stats directly
                                     try:
-                                        # Import the stats module explicitly
-                                        import quantstats as qs
-                                        # Use qs.stats() as a module or call individual functions
-                                        from quantstats import stats
-                                        stats_df = stats.stats(returns)
+                                        from quantstats import stats as qs_stats
+                                        stats_df = qs_stats.stats(returns)
                                         if stats_df is not None:
                                             st.dataframe(stats_df.to_frame().T, width='stretch')
                                         else:
