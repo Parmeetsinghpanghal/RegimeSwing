@@ -868,7 +868,7 @@ def render_dashboard_page(params):
                 }
                 break
 
-        tab1, tab2, tab3 = st.tabs(["📊 TradingView Chart", "📈 Options Payoff", "📋 Signal Details"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 TradingView Chart", "📈 Options Payoff", "📋 Signal Details", "📊 QuantStats Tearsheet"])
 
         with tab1:
             col1, col2 = st.columns([3, 1])
@@ -897,6 +897,43 @@ def render_dashboard_page(params):
                 })
             else:
                 st.info("No signal details available")
+
+        with tab4:
+            st.subheader("📊 QuantStats Tearsheet")
+            if not QUANTSTATS_AVAILABLE:
+                st.warning("⚠️ QuantStats not installed. Install with: `pip install quantstats`")
+                st.info("Run locally: `pip install quantstats` to enable professional tearsheets.")
+            else:
+                try:
+                    if isinstance(df.index, pd.MultiIndex):
+                        sym_df = df.xs(chart_symbol, level='Symbol')
+                    else:
+                        sym_df = df
+
+                    if sym_df.empty:
+                        st.warning("No data available for tearsheet")
+                    else:
+                        # Prepare returns for QuantStats
+                        returns = sym_df['Close'].pct_change().dropna()
+
+                        if len(returns) < 2:
+                            st.warning("Insufficient data for tearsheet (need at least 2 data points)")
+                        else:
+                            with st.spinner("Generating QuantStats tearsheet..."):
+                                # Generate HTML tearsheet
+                                html_report = qs.reports.html(
+                                    returns,
+                                    benchmark=None,  # Could add Nifty as benchmark
+                                    title=f'{chart_symbol} - QuantStats Tearsheet',
+                                    output=None  # Return as string
+                                )
+
+                                # Display in Streamlit
+                                st.components.v1.html(html_report, height=800, scrolling=True)
+
+                except Exception as e:
+                    st.error(f"Error generating tearsheet: {e}")
+                    st.info("Ensure QuantStats is installed: `pip install quantstats`")
 
 
 def render_scoring_page(params):
