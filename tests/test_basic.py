@@ -20,8 +20,8 @@ def test_imports():
     from indicators.regime import RegimeDetector
     from strategies.swing import run_all_strategies, get_all_strategies
     from strategies.scoring import create_scorer, SwingScore
-    from backtest.engine import BacktestConfig, WalkForwardBacktester
-    from papertrade.engine import PaperTradingEngine
+    from backtest import BacktestConfig, WalkForwardBacktester
+    from papertrade import PaperTradingEngine
 
     assert True  # If imports work, test passes
 
