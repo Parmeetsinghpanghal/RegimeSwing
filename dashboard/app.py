@@ -943,7 +943,6 @@ def render_dashboard_page(params):
                             st.warning("Insufficient data for tearsheet (need at least 2 data points)")
                         else:
                             with st.spinner("Generating QuantStats tearsheet..."):
-                                # Try to generate simple stats first
                                 st.write(f"**Data points:** {len(returns)} | **Date range:** {returns.index[0].date()} to {returns.index[-1].date()}")
 
                                 # Generate full HTML tearsheet
@@ -959,9 +958,23 @@ def render_dashboard_page(params):
                                     st.components.v1.html(html_report, height=800, scrolling=True)
                                 else:
                                     st.warning("Tearsheet generated but appears empty. Trying alternative method...")
-                                    # Fallback: use st.write with QuantStats stats
-                                    stats = qs.stats(returns)
-                                    st.dataframe(stats.to_frame().T, width='stretch')
+                                    # Fallback: use QuantStats stats directly
+                                    try:
+                                        # Import the stats module explicitly
+                                        import quantstats as qs
+                                        # Use qs.stats() as a module or call individual functions
+                                        from quantstats import stats
+                                        stats_df = stats.stats(returns)
+                                        if stats_df is not None:
+                                            st.dataframe(stats_df.to_frame().T, width='stretch')
+                                        else:
+                                            st.warning("Could not generate stats table")
+                                    except Exception as stats_e:
+                                        st.warning(f"Stats fallback failed: {stats_e}")
+                                        # Show basic stats manually
+                                        st.write(f"**Mean Return:** {returns.mean()*100:.2f}%")
+                                        st.write(f"**Volatility (Annualized):** {returns.std()*np.sqrt(252)*100:.2f}%")
+                                        st.write(f"**Sharpe Ratio:** {returns.mean()/returns.std()*np.sqrt(252):.2f}" if returns.std() > 0 else "**Sharpe Ratio:** N/A")
 
                 except Exception as e:
                     st.error(f"Error generating tearsheet: {e}")
