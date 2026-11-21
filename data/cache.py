@@ -442,7 +442,6 @@ class OHLCVCache:
             combined.set_index('Symbol', append=True, inplace=True)
             combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
             combined.sort_index(inplace=True)
-
             return combined
 
         finally:

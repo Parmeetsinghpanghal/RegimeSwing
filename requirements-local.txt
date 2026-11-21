@@ -35,6 +35,9 @@ accelerate>=0.20.0
 # Vectorized backtesting
 vectorbt>=0.25.0
 
+# QuantStats for tearsheets
+quantstats>=0.0.59
+
 # Optional: Hyperparameter optimization
 optuna>=3.0.0
 

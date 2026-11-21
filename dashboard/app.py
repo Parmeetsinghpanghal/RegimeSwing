@@ -4,6 +4,13 @@ Upgraded with TradingView-style charts, Sensibull-style options payoff, and mult
 Cloud-compatible version for Streamlit Cloud deployment.
 """
 
+# Add project root to path at the VERY TOP - before any other imports
+import sys
+from pathlib import Path
+ROOT_DIR = Path(__file__).parent.parent.absolute()
+sys.path.insert(0, str(ROOT_DIR))
+
+# Now import other modules
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -26,18 +33,6 @@ except ImportError:
     qs = None
 
 logger = logging.getLogger(__name__)
-
-# Add project root to path - works both locally and on Streamlit Cloud
-ROOT_DIR = Path(__file__).parent.parent.absolute()
-sys.path.insert(0, str(ROOT_DIR))
-
-# Import after path setup
-from data.fetcher import create_fetcher, DataFetcher
-from indicators.technical import add_all_indicators, ensure_multiindex
-from indicators.regime import RegimeDetector
-from indicators.targets import TargetCalculator
-from strategies.swing import run_all_strategies, get_all_strategies
-from strategies.scoring import create_scorer, score_and_rank, SwingScore
 
 st.set_page_config(
     page_title="Swing Toolkit Dashboard",
