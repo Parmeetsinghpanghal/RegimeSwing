@@ -32,6 +32,12 @@ except ImportError:
     QUANTSTATS_AVAILABLE = False
     qs = None
 
+# Import SwingScore type for type hints
+try:
+    from strategies.scoring import SwingScore
+except ImportError:
+    SwingScore = None
+
 logger = logging.getLogger(__name__)
 
 st.set_page_config(

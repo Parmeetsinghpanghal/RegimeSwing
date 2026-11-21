@@ -86,7 +86,7 @@ STATIC_NIFTY200 = [
 
 def _get_cache_path(index_name: str) -> Path:
     """Get cache file path for an index."""
-    return Path(f"./data/cache/universe/{index_name}_constituents.json")
+    return CACHE_DIR / f"{index_name}_constituents.json"
 
 
 def _is_cache_fresh(cache_path: Path, max_age_hours: int = 24) -> bool:
@@ -94,7 +94,7 @@ def _is_cache_fresh(cache_path: Path, max_age_hours: int = 24) -> bool:
     if not cache_path.exists():
         return False
     mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
-    return datetime.now() - mtime < timedelta(hours=24)
+    return datetime.now() - mtime < timedelta(hours=max_age_hours)
 
 
 def _load_from_cache(cache_path: Path) -> Optional[List[str]]:
@@ -155,8 +155,7 @@ def fetch_nifty200_constituents(force_refresh: bool = False) -> List[str]:
     Fetch Nifty 200 constituents from NSE with caching.
     Returns list of symbols without .NS suffix.
     """
-    cache_path = Path("./data/cache/universe/nifty200_constituents.json")
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path = _get_cache_path("nifty200")
 
     if not force_refresh and _is_cache_fresh(cache_path):
         cached = _load_from_cache(cache_path)
@@ -166,7 +165,7 @@ def fetch_nifty200_constituents(force_refresh: bool = False) -> List[str]:
 
     # Fetch from NSE
     logger.info("Fetching Nifty 200 constituents from NSE...")
-    df = _fetch_nse_csv("https://archives.nseindia.com/content/indices/ind_nifty200list.csv")
+    df = _fetch_nse_csv(NSE_NIFTY200_URL)
 
     if df is not None and not df.empty:
         symbols = _extract_symbols(df)
@@ -182,15 +181,14 @@ def fetch_nifty200_constituents(force_refresh: bool = False) -> List[str]:
 
 def fetch_nifty50_constituents(force_refresh: bool = False) -> List[str]:
     """Fetch Nifty 50 constituents."""
-    cache_path = Path("./data/cache/universe/nifty50_constituents.json")
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path = _get_cache_path("nifty50")
 
     if not force_refresh and _is_cache_fresh(cache_path):
         cached = _load_from_cache(cache_path)
         if cached:
             return cached
 
-    df = _fetch_nse_csv("https://archives.nseindia.com/content/indices/ind_nifty50list.csv")
+    df = _fetch_nse_csv(NSE_NIFTY50_URL)
     if df is not None and not df.empty:
         symbols = _extract_symbols(df)
         if symbols:
@@ -205,15 +203,14 @@ def fetch_nifty50_constituents(force_refresh: bool = False) -> List[str]:
 
 def fetch_nifty100_constituents(force_refresh: bool = False) -> List[str]:
     """Fetch Nifty 100 constituents."""
-    cache_path = Path("./data/cache/universe/nifty100_constituents.json")
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path = _get_cache_path("nifty100")
 
     if not force_refresh and _is_cache_fresh(cache_path):
         cached = _load_from_cache(cache_path)
         if cached:
             return cached
 
-    df = _fetch_nse_csv("https://archives.nseindia.com/content/indices/ind_nifty100list.csv")
+    df = _fetch_nse_csv(NSE_NIFTY100_URL)
     if df is not None and not df.empty:
         symbols = _extract_symbols(df)
         if symbols:
@@ -228,15 +225,14 @@ def fetch_nifty100_constituents(force_refresh: bool = False) -> List[str]:
 
 def fetch_nifty_next50_constituents(force_refresh: bool = False) -> List[str]:
     """Fetch Nifty Next 50 constituents."""
-    cache_path = Path("./data/cache/universe/niftynext50_constituents.json")
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path = _get_cache_path("niftynext50")
 
     if not force_refresh and _is_cache_fresh(cache_path):
         cached = _load_from_cache(cache_path)
         if cached:
             return cached
 
-    df = _fetch_nse_csv("https://archives.nseindia.com/content/indices/ind_niftynext50list.csv")
+    df = _fetch_nse_csv(NSE_NIFTY_NEXT50_URL)
     if df is not None and not df.empty:
         symbols = _extract_symbols(df)
         if symbols:
@@ -268,90 +264,6 @@ def get_nifty_next50_symbols(force_refresh: bool = False) -> List[str]:
 def get_universe(universe: str, force_refresh: bool = False) -> List[str]:
     universe = universe.lower().strip()
     if universe == 'nifty50':
-        return get_nifty50_symbols(force_refresh)
-    elif universe == 'nifty100':
-        return get_nifty100_symbols(force_refresh)
-    elif universe == 'nifty200':
-        return get_nifty200_symbols(force_refresh)
-    elif universe == 'niftynext50':
-        return get_nifty_next50_symbols(force_refresh)
-    else:
-        return [s.strip().upper() for s in universe.split(',') if s.strip()]
-
-
-def get_all_symbols() -> List[str]:
-    return get_nifty200_symbols()
-
-
-# Cache directory setup
-CACHE_DIR = Path("./data/cache/universe")
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_TTL_HOURS = 24
-
-
-def _get_cache_path(index_name: str) -> Path:
-    return Path(f"./data/cache/universe/{index_name}_constituents.json")
-
-
-def _is_cache_fresh(cache_path: Path, max_age_hours: int = 24) -> bool:
-    if not cache_path.exists():
-        return False
-    mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
-    return datetime.now() - mtime < timedelta(hours=max_age_hours)
-
-
-def _load_from_cache(cache_path: Path) -> Optional[List[str]]:
-    try:
-        with open(cache_path, 'r') as f:
-            data = json.load(f)
-        return data.get('symbols', [])
-    except Exception as e:
-        logger.warning(f"Failed to load cache from {cache_path}: {e}")
-        return None
-
-
-def _save_to_cache(cache_path: Path, symbols: List[str]):
-    try:
-        data = {
-            'symbols': symbols,
-            'updated_at': datetime.now().isoformat(),
-            'count': len(symbols)
-        }
-        with open(cache_path, 'w') as f:
-            json.dump(data, f, indent=2)
-        logger.info(f"Cached {len(symbols)} symbols to {cache_path.name}")
-    except Exception as e:
-        logger.warning(f"Failed to save cache to {cache_path}: {e}")
-
-
-def _fetch_nse_csv(url: str, timeout: int = 10) -> Optional[pd.DataFrame]:
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-    }
-    try:
-        response = requests.get(url, headers=headers, timeout=timeout)
-        response.raise_for_status()
-        df = pd.read_csv(StringIO(response.text))
-        return df
-    except Exception as e:
-        logger.warning(f"Failed to fetch {url}: {e}")
-        return None
-
-
-def _extract_symbols(df: pd.DataFrame) -> List[str]:
-    symbol_cols = [c for c in df.columns if c.lower() in ('symbol', 'tradingsymbol')]
-    if not symbol_cols:
-        symbol_cols = [df.columns[0]]
-    symbols = df[symbol_cols[0]].dropna().astype(str).str.strip().str.upper().tolist()
-    symbols = [s.replace(' ', '').replace('.', '') for s in symbols if s]
-    return symbols
-
-
-def get_universe(universe: str, force_refresh: bool = False) -> List[str]:
-    universe = universe.lower().strip()
-    if universe == 'nifty50':
         return fetch_nifty50_constituents(force_refresh)
     elif universe == 'nifty100':
         return get_nifty100_symbols()
@@ -364,7 +276,7 @@ def get_universe(universe: str, force_refresh: bool = False) -> List[str]:
 
 
 def get_all_symbols() -> List[str]:
-    return fetch_nifty200_constituents()
+    return get_nifty200_symbols()
 
 
 if __name__ == "__main__":

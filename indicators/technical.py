@@ -24,7 +24,7 @@ def ensure_multiindex(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df['Symbol'] = 'UNKNOWN'
         df = df.set_index('Symbol', append=True).reorder_levels(['Symbol', df.index.names[0]])
-    df.sort_index(inplace=True)
+    df = df.sort_index()
     return df
 
 

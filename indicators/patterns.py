@@ -563,9 +563,9 @@ def add_patterns_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
         if results:
             combined = pd.concat(results)
-            combined.set_index('Symbol', append=True, inplace=True)
+            combined = combined.set_index('Symbol', append=True)
             combined = combined.reorder_levels(['Symbol', combined.index.names[0]])
-            combined.sort_index(inplace=True)
+            combined = combined.sort_index()
             return combined
         return df
     else:

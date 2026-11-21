@@ -517,7 +517,7 @@ if __name__ == "__main__":
         df.columns = df.columns.get_level_values(0)
     df.columns = [c.capitalize() for c in df.columns]
     df['Symbol'] = 'RELIANCE'
-    df.set_index('Symbol', append=True, inplace=True)
+    df = df.set_index('Symbol', append=True)
     df = df.reorder_levels(['Symbol', 'Date'])
 
     df = add_all_indicators(df, {

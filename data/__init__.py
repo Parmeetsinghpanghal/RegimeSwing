@@ -8,7 +8,7 @@ from .universe import (
     get_nifty200_symbols, get_nifty50_symbols, get_nifty100_symbols,
     get_nifty_next50_symbols, get_universe, fetch_nifty200_constituents
 )
-from .cache import OHLCVCache, get_cache, fetch_nifty200_batch
+from .cache import OHLCVCache, get_cache
 from .nse_institutional import (
     NSEInstitutionalData, get_nse_institutional,
     get_fii_dii_flow, get_fii_dii_signal,
@@ -31,7 +31,6 @@ __all__ = [
     'fetch_nifty200_constituents',
     'OHLCVCache',
     'get_cache',
-    'fetch_nifty200_batch',
     'NSEInstitutionalData',
     'get_nse_institutional',
     'get_fii_dii_flow',

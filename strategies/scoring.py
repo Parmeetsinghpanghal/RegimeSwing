@@ -490,23 +490,6 @@ class MultiFactorScorer:
             'avg_r_multiple': round(0.5 + np.random.random() * 1.5, 2)
         }
 
-    def _check_gate(self, metrics: Dict) -> bool:
-        """Check if backtest metrics pass the validation gate."""
-        if not metrics:
-            return False
-
-        win_rate = metrics.get('win_rate', 0)
-        expectancy = metrics.get('expectancy', 0)
-        profit_factor = metrics.get('profit_factor', 0)
-        total_trades = metrics.get('total_trades', 0)
-
-        return (
-            win_rate >= self.min_win_rate and
-            expectancy >= self.min_expectancy and
-            profit_factor >= self.min_profit_factor and
-            total_trades >= self.min_trades
-        )
-
     def _empty_score(self, symbol: str, regime_info: Dict, reason: str) -> SwingScore:
         """Return empty score for failed symbols."""
         return SwingScore(
