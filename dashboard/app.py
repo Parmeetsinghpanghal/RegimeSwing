@@ -558,7 +558,7 @@ def create_scorecard(score: SwingScore):
             <span>{score_label}</span>
         </div>
         <div style="margin-top: 12px;">
-            {''.join([f'<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;"><span>{f.name.replace("_"," ").title()}</span><span style="color:{factor_color(f.score)}; font-weight:600;">{f.score:.0f}</span><span style="color:#999; font-size:0.85em;"> (w={f.weight:.0%})</span></div>' for f in score.factor_scores])}
+            {''.join([f'<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;"><span style="color:#333; font-weight:500;">{f.name.replace("_"," ").title()}</span><span style="color:{factor_color(f.score)}; font-weight:600;">{f.score:.0f}</span><span style="color:#999; font-size:0.85em;"> (w={f.weight:.0%})</span></div>' for f in score.factor_scores])}
         </div>
     </div>
     """
