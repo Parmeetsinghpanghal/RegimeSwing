@@ -732,8 +732,9 @@ def render_dashboard_page(params):
             should_opt, reason_opt, opt_params = detector.should_sell_options(regime)
             icon = "✅" if should_opt else "❌"
             st.write(f"{icon} Options Selling: {reason_opt}")
-            if should_opt:
-                st.json(opt_params)
+            if should_opt and opt_params:
+                opt_df = pd.DataFrame(list(opt_params.items()), columns=['Parameter', 'Value'])
+                st.dataframe(opt_df, width='stretch', hide_index=True)
     except Exception as e:
         st.warning(f"Regime detection error: {e}")
         regime = None
