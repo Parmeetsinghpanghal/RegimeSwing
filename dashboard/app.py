@@ -69,17 +69,13 @@ st.markdown("""
         background-color: #00cc88;
         color: white;
     }
-    /* Force dark text in dataframes for both light and dark themes */
-    .stDataFrame, .stDataFrame * {
-        color: #111 !important;
-    }
-    .stDataFrame td, .stDataFrame th {
-        color: #111 !important;
-        background-color: #fff !important;
-    }
     /* Scorecard dark text */
     .scorecard-symbol { color: #111 !important; }
     .scorecard-text { color: #333 !important; }
+    /* Ensure dataframe text is visible */
+    .stDataFrame td, .stDataFrame th {
+        color: inherit !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -803,17 +799,23 @@ def render_dashboard_page(params):
             })
         score_df = pd.DataFrame(score_data)
 
-        def highlight_score(row):
-            score = float(row['Score'])
-            if score >= 75:
-                return ['background-color: #e8f5e9'] * len(row)
-            elif score >= 60:
-                return ['background-color: #fff3e0'] * len(row)
-            elif score >= 45:
-                return ['background-color: #fff8e1'] * len(row)
-            return ['background-color: #fbe9e7'] * len(row)
+        # Use simple color coding without background (theme-aware)
+        def score_color(val):
+            """Return text color based on score value."""
+            try:
+                score = float(val)
+                if score >= 75:
+                    return 'color: #00cc88; font-weight: 600;'
+                elif score >= 60:
+                    return 'color: #ffaa00; font-weight: 600;'
+                elif score >= 45:
+                    return 'color: #ff6600; font-weight: 600;'
+                else:
+                    return 'color: #ff4444; font-weight: 600;'
+            except:
+                return ''
 
-        st.dataframe(score_df.style.apply(highlight_score, axis=1), width='stretch')
+        st.dataframe(score_df.style.map(score_color, subset=['Score']), width='stretch')
 
         # Download
         csv = score_df.to_csv(index=False)
