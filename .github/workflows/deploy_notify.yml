@@ -27,7 +27,7 @@ jobs:
         run: pytest tests/ -v --tb=short -x || true
         continue-on-error: true
       - name: Quick import test
-        run: python -c "import sys; sys.path.insert(0, '.'); exec(open('tests/import_test.py').read())" || true
+        run: python tests/import_test.py
         continue-on-error: true
 
   notify-success:
